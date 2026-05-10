@@ -1,0 +1,32 @@
+{
+  "name": "prevetting-checker",
+  "version": "1.0.0",
+  "description": "Speed Kit Pre-Vetting Step 2 Analysis Tool - CDP-based checks",
+  "main": "src/cli.ts",
+  "scripts": {
+    "cli": "ts-node src/cli.ts",
+    "build": "tsc",
+    "start-chrome": "ts-node src/cli.ts start-chrome",
+    "raw-html": "ts-node src/cli.ts raw-html",
+    "compare-html": "ts-node src/cli.ts compare-html",
+    "headers": "ts-node src/cli.ts headers",
+    "check-nav": "ts-node src/cli.ts check-nav",
+    "check-images": "ts-node src/cli.ts check-images",
+    "check-ssr": "ts-node src/cli.ts check-ssr",
+    "check-filters": "ts-node src/cli.ts check-filters"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "chrome-remote-interface": "^0.33.2",
+    "commander": "^12.1.0",
+    "diff": "^5.2.0",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/chrome-remote-interface": "^0.31.14",
+    "@types/diff": "^5.2.1",
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
