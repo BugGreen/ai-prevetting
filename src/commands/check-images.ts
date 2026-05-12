@@ -1,5 +1,6 @@
 import { createNewTarget, DEVICE_PROFILES, DeviceType } from '../cdp/connection';
 import { createRunDir, saveJson, extractDomain } from '../utils/artifacts';
+import { detectBotWall } from './discover-phase1';
 
 export interface CheckImagesOptions {
   url: string;
@@ -87,6 +88,8 @@ export interface CheckImagesResult {
     fromCDN: number;
   };
   analysis: string;
+  /** Populated when a bot wall or challenge page is detected — results may be unreliable */
+  warnings: string[];
   savedTo?: string;
 }
 
@@ -126,6 +129,10 @@ export async function checkImages(options: CheckImagesOptions): Promise<CheckIma
       mobile: deviceProfile.mobile,
     });
 
+    // Track main document request (for bot wall detection)
+    let mainRequestId = '';
+    const warnings: string[] = [];
+
     // Track image responses
     const responseMap = new Map<string, {
       headers: Record<string, string>;
@@ -136,6 +143,9 @@ export async function checkImages(options: CheckImagesOptions): Promise<CheckIma
     const requestUrls = new Map<string, string>();
 
     client.Network.responseReceived((params) => {
+      if (params.type === 'Document') {
+        mainRequestId = params.requestId;
+      }
       if (params.type === 'Image') {
         const headers = params.response.headers as Record<string, string>;
         // Try to get content-length from response
@@ -187,6 +197,24 @@ export async function checkImages(options: CheckImagesOptions): Promise<CheckIma
 
     // Wait for initial render
     await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Bot wall safety gate — run before DOM queries so vacuous results are flagged
+    if (mainRequestId) {
+      try {
+        const bodyResponse = await client.Network.getResponseBody({ requestId: mainRequestId });
+        const rawHtml = bodyResponse.base64Encoded
+          ? Buffer.from(bodyResponse.body, 'base64').toString('utf-8')
+          : bodyResponse.body;
+        const botWall = await detectBotWall(rawHtml);
+        if (botWall.isWall) {
+          const msg = `Bot wall detected (${botWall.type}, ${botWall.confidence} confidence): ${botWall.evidence.join(', ')}. Image results may be empty or misleading.`;
+          warnings.push(msg);
+          console.warn(`⚠ ${msg}`);
+        }
+      } catch {
+        // getResponseBody can fail for cached responses — non-fatal
+      }
+    }
 
     // Analyze DOM images BEFORE scrolling to get accurate above-the-fold info
     const domImagesResult = await client.Runtime.evaluate({
@@ -382,6 +410,7 @@ export async function checkImages(options: CheckImagesOptions): Promise<CheckIma
       sizeAnalysis,
       summary,
       analysis,
+      warnings,
       savedTo,
     };
   } finally {

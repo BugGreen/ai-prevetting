@@ -1,5 +1,6 @@
 import { createNewTarget, DEVICE_PROFILES, DeviceType } from '../cdp/connection';
 import { createRunDir, saveHtml, saveJson, extractDomain } from '../utils/artifacts';
+import { detectBotWall } from './discover-phase1';
 
 export interface CheckSSROptions {
   url: string;
@@ -101,12 +102,25 @@ export async function checkSSR(options: CheckSSROptions): Promise<SSRCheckResult
     });
     const renderedHtml = renderedResult.result.value as string;
 
+    // Bot wall safety gate — must run before any heuristic analysis
+    const botWall = await detectBotWall(rawHtml);
+    if (botWall.isWall) {
+      console.warn(`⚠ Bot wall detected (${botWall.type}, ${botWall.confidence} confidence). SSR result unreliable.`);
+      console.warn(`  Evidence: ${botWall.evidence.join(', ')}`);
+    }
+
     // Analyze both versions
     const rawIndicators = analyzeContent(rawHtml);
     const renderedIndicators = analyzeContent(renderedHtml);
 
     // Determine SSR status
     const analysis = determineSSRStatus(rawIndicators, renderedIndicators, rawHtml, renderedHtml);
+
+    // Demote confidence if a bot wall was detected
+    if (botWall.isWall && analysis.confidence !== 'low') {
+      analysis.confidence = 'low';
+      analysis.reasoning = `[BOT WALL DETECTED: ${botWall.type}] ${analysis.reasoning}`;
+    }
 
     let savedTo: string | undefined;
     if (saveToFile) {
