@@ -36,11 +36,35 @@ src/
 │   ├── check-navigation.ts
 │   ├── check-filters.ts   # PLP filter detection
 │   ├── get-headers.ts     # Response headers
-│   └── run-wpt.ts         # WebPageTest integration
+│   ├── run-wpt.ts         # WebPageTest integration
+│   └── discover-phase1/   # Phase 1 autonomous discovery (feature directory)
+│       ├── index.ts       # Public barrel — all consumers import from here
+│       ├── bot-wall.ts    # detectBotWall + BOT_DETECTORS registry
+│       ├── consent.ts     # dismissConsentDialog + CONSENT_REGISTRY
+│       └── ...            # One file per future Phase 1 function
 └── utils/
     ├── artifacts.ts       # File saving utilities
     └── diff.ts            # HTML diff utilities
 ```
+
+### Phase 1 Discovery Module Convention
+
+Every Phase 1 function lives in its own file under `src/commands/discover-phase1/`.
+Static registry data (pattern arrays, selector lists) and the execution logic that
+consumes it are **co-located in the same file** — the registry is an internal
+implementation detail of the function, not a shared configuration resource.
+
+```
+src/commands/discover-phase1/
+├── index.ts        ← ONLY file consumers import from; re-exports everything
+├── bot-wall.ts     ← BOT_DETECTORS registry + detectBotWall()
+├── consent.ts      ← CONSENT_REGISTRY + dismissConsentDialog()
+├── <next>.ts       ← Add one file per new Phase 1 function here
+```
+
+**Rule:** When adding a new Phase 1 module, create a new `.ts` file in this directory
+with its registry and function co-located, then add the re-export to `index.ts`.
+Do not create a top-level `src/config/` or `src/utils/discovery/` for these.
 
 ### Key Interfaces
 

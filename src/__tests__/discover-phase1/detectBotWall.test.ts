@@ -1,4 +1,4 @@
-import { detectBotWall } from '../../commands/discover-phase1';
+import { detectBotWall } from '../../commands/discover-phase1/bot-wall';
 
 describe('detectBotWall', () => {
   it('detects a Cloudflare challenge page', async () => {

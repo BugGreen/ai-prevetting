@@ -1,12 +1,10 @@
 /**
- * discover-phase1.ts
+ * bot-wall.ts
  *
- * Autonomous Phase 1 Discovery — replaces the manual Cowork analyst step.
- * All functions here feed Step1ParsedReport directly in memory; no Markdown needed.
- *
- * Execution model:
- *   runPhase1Discovery() opens ONE Chrome tab, passes the client to every helper,
- *   and closes the tab at the end. Helpers never open or close connections themselves.
+ * Bot-wall / challenge-page detection for Phase 1 Discovery.
+ * Static registry (BOT_DETECTORS) and execution logic (detectBotWall) are
+ * co-located here — the registry is an internal implementation detail of this
+ * function and is not shared with any other module.
  *
  * Conventions followed: docs/architecture/08-existing-conventions.md
  */
@@ -22,8 +20,6 @@ export interface BotWallResult {
   evidence: string[];
 }
 
-// ─── detectBotWall — Registry ─────────────────────────────────────────────────
-
 interface BotSignal {
   pattern: RegExp;
   weight: number;
@@ -36,6 +32,8 @@ interface BotDetector {
   /** Minimum cumulative signal weight required to declare a match */
   minScore: number;
 }
+
+// ─── Registry ─────────────────────────────────────────────────────────────────
 
 /**
  * Registry of known bot-wall / challenge-page patterns.
@@ -102,6 +100,8 @@ const BOT_DETECTORS: BotDetector[] = [
   },
 ];
 
+// ─── Function ─────────────────────────────────────────────────────────────────
+
 /**
  * Inspect raw HTML for known bot-wall / challenge-page signatures.
  * Pure function — no CDP, no network. Operates on a string.
@@ -110,8 +110,8 @@ const BOT_DETECTORS: BotDetector[] = [
  * BOT_DETECTORS above. The function body itself never needs to change.
  *
  * Called by:
- *   - check-ssr.ts   : after getResponseBody(), before analyzeContent()
- *   - check-images.ts: after loadEventFired(), before DOM queries
+ *   - check-ssr.ts    : after getResponseBody(), before analyzeContent()
+ *   - check-images.ts : after loadEventFired(), before DOM queries
  *   - runPhase1Discovery(): step 6 — aborts if isWall=true
  */
 export async function detectBotWall(rawHtml: string): Promise<BotWallResult> {

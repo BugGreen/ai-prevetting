@@ -1,6 +1,6 @@
 # detectBotWall()
 
-**File:** `src/commands/discover-phase1.ts`
+**File:** `src/commands/discover-phase1/bot-wall.ts`
 **Tests:** `src/__tests__/discover-phase1/detectBotWall.test.ts` (4 tests)
 **Status:** Implemented ✅
 
