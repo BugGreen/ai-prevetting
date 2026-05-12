@@ -199,7 +199,7 @@ export async function checkImages(options: CheckImagesOptions): Promise<CheckIma
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     // Dismiss any blocking modals (routing, consent) before DOM queries
-    await dismissBlockingModals(client);
+    await dismissBlockingModals(client, new URL(url).hostname);
 
     // Bot wall safety gate — run before DOM queries so vacuous results are flagged
     if (mainRequestId) {

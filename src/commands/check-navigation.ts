@@ -179,7 +179,7 @@ export async function checkNavigation(options: NavigationCheckOptions): Promise<
     await waitForHydration(client);
 
     // Dismiss any blocking modals (routing, consent) so links are clickable
-    await dismissBlockingModals(client);
+    await dismissBlockingModals(client, new URL(startUrl).hostname);
 
     // Clear any previous requests
     requests.length = 0;

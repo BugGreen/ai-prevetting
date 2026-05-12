@@ -93,7 +93,7 @@ export async function checkSSR(options: CheckSSROptions): Promise<SSRCheckResult
     }
 
     // Dismiss any blocking modals (routing, consent) before reading rendered DOM
-    await dismissBlockingModals(client);
+    await dismissBlockingModals(client, new URL(url).hostname);
 
     // Wait for JavaScript to execute
     await new Promise(resolve => setTimeout(resolve, 3000));

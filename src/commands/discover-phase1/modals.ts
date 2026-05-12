@@ -6,9 +6,14 @@
  * banners, newsletter gates, etc. Loops until no registered modal is visible
  * (max 3 iterations) so stacked modals are cleared in one call.
  *
- * Static registry (BLOCKING_MODAL_REGISTRY) and execution logic
- * (dismissBlockingModals) are co-located — the registry is an internal
- * implementation detail of this function only.
+ * Detection strategy (per iteration, in priority order):
+ *   1. Dynamic routing check — if targetHostname is provided, looks for any
+ *      visible button whose innerText contains the target domain. Catches
+ *      language/geo routing modals on any site without hardcoded registry entries.
+ *   2. Static registry — known CMP selectors (Cookiebot, OneTrust, TrustArc, …).
+ *
+ * Static registry (BLOCKING_MODAL_REGISTRY) and execution logic are co-located —
+ * the registry is an internal implementation detail of this function only.
  *
  * Conventions followed: docs/architecture/08-existing-conventions.md
  */
@@ -41,24 +46,14 @@ interface BlockingModalEntry {
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 /**
- * Registry of known blocking-modal dismiss targets, evaluated in order.
- * To add a new modal: append one entry — the function body never changes.
+ * Registry of known blocking-modal dismiss targets, evaluated after the
+ * dynamic routing check each iteration.
  *
- * Ordering matters: entries that appear first are probed first each iteration.
- * Put routing modals before consent banners because routing modals typically
- * appear before the GDPR layer is rendered.
+ * To add a new modal: append one entry — the function body never changes.
+ * For site-specific entries, use targetDomains so the entry is a no-op on
+ * unrelated pages.
  */
 const BLOCKING_MODAL_REGISTRY: BlockingModalEntry[] = [
-
-  // ── Routing / geo-language modals ────────────────────────────────────────
-  {
-    selector: 'button',
-    matchText: /stay on www\.fritz-berger\.de/i,
-    targetDomains: ['fritz-berger.de'],
-    category: 'routing',
-    method: 'fritz-berger-routing',
-  },
-
   // ── Consent / GDPR banners ───────────────────────────────────────────────
   { selector: '#CybotCookiebotDialogBodyButtonAccept',  category: 'consent', method: 'cookiebot' },
   { selector: '.onetrust-accept-btn-handler',           category: 'consent', method: 'onetrust' },
@@ -73,48 +68,82 @@ const BLOCKING_MODAL_REGISTRY: BlockingModalEntry[] = [
  * Dismiss all visible blocking modals on the currently loaded page.
  * Runs up to MAX_ITERATIONS times, clearing one modal per iteration.
  *
+ * @param client        CDP client (already connected, page loaded)
+ * @param targetHostname  Hostname of the page under test (e.g. 'www.fritz-berger.de').
+ *                        When provided, enables dynamic routing-modal detection:
+ *                        any visible <button> whose text contains this hostname is
+ *                        clicked first, before the static registry is checked.
+ *                        Also used to filter targetDomains registry entries.
+ *
  * Each iteration makes two Runtime.evaluate calls:
  *   1. Probe — find the first visible, matching element
  *   2. Click — click that element (skipped when probe finds nothing)
- *
- * targetDomains filtering happens in TypeScript before any CDP call, so
- * site-specific entries are never sent to unrelated pages.
  *
  * Called by:
  *   - check-images.ts    : after loadEventFired() + 2s wait, before DOM queries
  *   - check-ssr.ts       : after loadEventFired(), before 3s wait
  *   - check-navigation.ts: after waitForHydration, before findMatchingLink()
  */
-export async function dismissBlockingModals(client: any): Promise<DismissResult> {
+export async function dismissBlockingModals(
+  client: any,
+  targetHostname?: string,
+): Promise<DismissResult> {
   const MAX_ITERATIONS = 3;
   const methods: string[] = [];
 
-  // Resolve current hostname once — used to filter targetDomains entries
-  const hostnameResult = await client.Runtime.evaluate({
-    expression: 'window.location.hostname',
-    returnByValue: true,
-  });
-  const hostname: string = hostnameResult.result.value ?? '';
-
-  // Filter registry to entries applicable to this domain
+  // Filter static registry to entries applicable to this hostname
   const applicableRegistry = BLOCKING_MODAL_REGISTRY.filter(entry =>
     !entry.targetDomains ||
-    entry.targetDomains.some(domain => hostname.endsWith(domain))
+    (targetHostname !== undefined &&
+      entry.targetDomains.some(domain => targetHostname.endsWith(domain)))
   );
 
-  // Serialise once (RegExp → { source, flags } so JSON.stringify works)
-  const serialised = applicableRegistry.map(entry => ({
+  // Serialise static registry once (RegExp → { source, flags } for JSON)
+  const serialisedRegistry = applicableRegistry.map(entry => ({
     selector: entry.selector,
     matchText: entry.matchText?.source ?? null,
     matchTextFlags: entry.matchText?.flags ?? '',
     method: entry.method,
   }));
-  const registryJson = JSON.stringify(serialised);
+  const registryJson = JSON.stringify(serialisedRegistry);
+
+  // Escape targetHostname for safe use in RegExp inside the page context.
+  // Uses simple string.includes() for the probe (no escaping needed there)
+  // but the returned matchText must be regex-safe for the click expression.
+  const regexSafeHostname = targetHostname
+    ? targetHostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    : '';
+
+  // Build the dynamic routing block injected at the top of each probe expression.
+  // Empty string when no hostname is provided — dynamic check is skipped entirely.
+  const dynamicRoutingBlock = targetHostname
+    ? `
+      // Dynamic routing check — find any visible button containing the target hostname
+      var targetHostLower = ${JSON.stringify(targetHostname.toLowerCase())};
+      var routingEls = document.querySelectorAll('button,[role="button"]');
+      for (var d = 0; d < routingEls.length; d++) {
+        var rel = routingEls[d];
+        var rrect = rel.getBoundingClientRect();
+        if (rrect.width === 0 || rrect.height === 0) continue;
+        if ((rel.innerText || '').toLowerCase().includes(targetHostLower)) {
+          return {
+            found: true,
+            selector: 'button,[role="button"]',
+            matchText: ${JSON.stringify(regexSafeHostname)},
+            matchTextFlags: 'i',
+            method: 'dynamic-routing',
+          };
+        }
+      }
+    `
+    : '';
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     // ── Call 1: probe ─────────────────────────────────────────────────────
     const probeResult = await client.Runtime.evaluate({
       expression: `(function() {
+        ${dynamicRoutingBlock}
+        // Static registry check
         var registry = ${registryJson};
         for (var r = 0; r < registry.length; r++) {
           var entry = registry[r];

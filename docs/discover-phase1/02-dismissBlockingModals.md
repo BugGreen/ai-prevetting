@@ -106,14 +106,43 @@ flowchart TD
 ## Signature
 
 ```typescript
-export async function dismissBlockingModals(client: any): Promise<DismissResult>
+export async function dismissBlockingModals(
+  client: any,
+  targetHostname?: string,  // e.g. 'www.fritz-berger.de' — enables dynamic routing detection
+): Promise<DismissResult>
 
 export interface DismissResult {
   dismissed: boolean;
   count: number;        // total modals cleared (0, 1, 2, ...)
-  methods: string[];    // ordered list, e.g. ['fritz-berger-routing', 'cookiebot']
+  methods: string[];    // ordered list, e.g. ['dynamic-routing', 'cookiebot']
 }
 ```
+
+---
+
+## Detection Strategy (per iteration)
+
+Each probe expression runs two checks in priority order:
+
+### 1. Dynamic routing check (when `targetHostname` is provided)
+
+Queries all `button, [role="button"]` elements. If any visible button's `innerText`
+contains the target hostname (case-insensitive), it is clicked and reported as
+`method: 'dynamic-routing'`.
+
+This catches language/geo routing modals on **any site** generically — no registry
+entry or prior knowledge of the site is needed. The probe uses `String.includes()`
+for detection; the returned `matchText` is the regex-escaped hostname so the click
+expression's `new RegExp(matchText, flags)` finds the same element reliably.
+
+`<a>` tags are intentionally excluded: nav links, footer links, and logo anchors
+commonly contain the site hostname, creating false positives on every page.
+Routing modal CTAs are always `<button>` elements.
+
+### 2. Static registry check
+
+Falls through to `BLOCKING_MODAL_REGISTRY` only if no dynamic routing match was found.
+Handles known CMPs (Cookiebot, OneTrust, TrustArc) via stable CSS selectors.
 
 ---
 
@@ -121,34 +150,17 @@ export interface DismissResult {
 
 ```typescript
 const BLOCKING_MODAL_REGISTRY: BlockingModalEntry[] = [
-  // Routing modals first — they appear before the GDPR layer is rendered
-  {
-    selector: 'button',
-    matchText: /stay on www\.fritz-berger\.de/i,
-    targetDomains: ['fritz-berger.de'],
-    category: 'routing',
-    method: 'fritz-berger-routing',
-  },
-  // Consent banners
+  // Static consent CMPs — stable selectors, no hostname needed
   { selector: '#CybotCookiebotDialogBodyButtonAccept', category: 'consent', method: 'cookiebot' },
+  { selector: '.onetrust-accept-btn-handler',          category: 'consent', method: 'onetrust' },
   // ...
 ];
 ```
 
-**To add a new modal:** append one `BlockingModalEntry` to `BLOCKING_MODAL_REGISTRY`.
-If it is site-specific, set `targetDomains` — the entry will never be evaluated on other pages.
-The function body never changes.
-
----
-
-## targetDomains Constraint
-
-The `targetDomains` field prevents site-specific text matchers from becoming false-positive
-noise on unrelated sites. Without it, a `matchText: /stay on/i` pattern on a generic
-`button` selector could accidentally click UI elements on other pages.
-
-**Filtering happens in TypeScript before any CDP call**, so the probe expression sent to
-the browser never contains entries that don't apply to the current hostname.
+**To add a new CMP:** append one entry to `BLOCKING_MODAL_REGISTRY`.
+For site-specific entries, set `targetDomains` — filtered in TypeScript before any CDP call.
+Routing modals on new clients are handled automatically via the dynamic check; no registry
+entry is needed.
 
 ---
 
@@ -156,47 +168,45 @@ the browser never contains entries that don't apply to the current hostname.
 
 | Call | Purpose |
 |---|---|
-| Probe | Find first visible element matching `selector` + optional `matchText` |
-| Click | Click that element (re-runs same find logic to avoid stale reference) |
+| Probe | Dynamic routing check, then static registry. Returns `{ found, selector, matchText, matchTextFlags, method }` |
+| Click | Re-runs the same element-find logic using returned `selector` + `matchText`. Avoids stale element references. |
 
-`matchText` is serialised as `{ source, flags }` and reconstructed in the browser via
-`new RegExp(source, flags)`, since `RegExp` objects cannot cross the CDP serialisation boundary.
+`matchText` RegExp objects are serialised as `{ source, flags }` strings for CDP transport,
+then reconstructed with `new RegExp(source, flags)` inside the browser context.
 
 ---
 
 ## MAX_ITERATIONS Guard
 
-The loop is capped at **3 iterations**. This covers the observed maximum (routing → consent = 2)
-with one spare for unknown future stacking, while preventing an infinite loop if a modal
-re-renders itself after being dismissed.
+Capped at **3 iterations**: covers routing → consent (2 modals) with one spare,
+while preventing an infinite loop if a modal re-renders after dismissal.
 
 ---
 
 ## Supported Modals
 
-| Site / CMP | Selector | matchText | Category |
-|---|---|---|---|
-| fritz-berger.de | `button` | `/stay on www\.fritz-berger\.de/i` | routing |
-| Cookiebot | `#CybotCookiebotDialogBodyButtonAccept` | — | consent |
-| OneTrust (class) | `.onetrust-accept-btn-handler` | — | consent |
-| OneTrust (id) | `#onetrust-accept-btn-handler` | — | consent |
-| TrustArc | `.trustarc-agree-btn` | — | consent |
-| Generic | `[data-consent-accept]` | — | consent |
+| Detection | Trigger | Method label |
+|---|---|---|
+| Dynamic (any site) | `button` text contains `targetHostname` | `dynamic-routing` |
+| Cookiebot | `#CybotCookiebotDialogBodyButtonAccept` | `cookiebot` |
+| OneTrust (class) | `.onetrust-accept-btn-handler` | `onetrust` |
+| OneTrust (id) | `#onetrust-accept-btn-handler` | `onetrust` |
+| TrustArc | `.trustarc-agree-btn` | `trustarc` |
+| Generic attribute | `[data-consent-accept]` | `generic-accept` |
 
 ---
 
 ## Extending
 
 ```typescript
-// Add a new consent CMP with a stable selector:
+// Add a new consent CMP:
 { selector: '[data-testid="uc-accept-all-button"]', category: 'consent', method: 'usercentrics' },
 
-// Add a site-specific routing modal:
+// Add a site-specific entry that only runs on one domain:
 {
-  selector: 'button',
-  matchText: /continue to uk site/i,
-  targetDomains: ['example.co.uk'],
-  category: 'routing',
-  method: 'example-routing',
+  selector: '#age-gate-confirm',
+  targetDomains: ['example.com'],
+  category: 'age-gate',
+  method: 'example-age-gate',
 },
 ```
