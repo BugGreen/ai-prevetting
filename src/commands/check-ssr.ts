@@ -1,6 +1,6 @@
 import { createNewTarget, DEVICE_PROFILES, DeviceType } from '../cdp/connection';
 import { createRunDir, saveHtml, saveJson, extractDomain } from '../utils/artifacts';
-import { detectBotWall } from './discover-phase1';
+import { detectBotWall, dismissConsentDialog } from './discover-phase1';
 
 export interface CheckSSROptions {
   url: string;
@@ -91,6 +91,9 @@ export async function checkSSR(options: CheckSSROptions): Promise<SSRCheckResult
         console.warn('Could not get response body for raw HTML');
       }
     }
+
+    // Dismiss consent banner before reading rendered DOM so real content is visible
+    await dismissConsentDialog(client);
 
     // Wait for JavaScript to execute
     await new Promise(resolve => setTimeout(resolve, 3000));
