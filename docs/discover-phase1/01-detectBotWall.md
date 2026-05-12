@@ -20,6 +20,109 @@ returns a challenge page instead of real content:
 
 ---
 
+## Diagram 1 — Registry Execution Flow
+
+```mermaid
+flowchart TD
+    START(["detectBotWall(rawHtml)"])
+
+    START --> LOOP["Iterate BOT_DETECTORS in order
+    cloudflare → datadome → perimeterx → distil → generic"]
+
+    LOOP --> SIG["Test each signal.pattern against rawHtml"]
+
+    SIG --> HIT{pattern\nmatches?}
+    HIT -->|Yes| ADD["score += signal.weight
+    evidence.push(signal.description)"]
+    HIT -->|No| NEXTSIG[next signal]
+    ADD --> NEXTSIG
+    NEXTSIG --> SIG
+
+    SIG --> THRESH{score >=\ndetector.minScore?}
+    THRESH -->|No| NEXTDET[next detector]
+    NEXTDET --> LOOP
+
+    THRESH -->|Yes| CONF["confidence =
+    score ≥ 1.5 → 'high'
+    score ≥ 1.0 → 'medium'
+    else → 'low'"]
+
+    CONF --> WALL["return {
+      isWall: true
+      type: detector.name
+      confidence
+      evidence[]
+    }"]
+
+    LOOP -->|all detectors exhausted| CLEAN["return {
+      isWall: false
+      type: null
+      confidence: 'high'
+      evidence: []
+    }"]
+
+    style WALL fill:#ffcccc,stroke:#cc0000,color:#000
+    style CLEAN fill:#ccffcc,stroke:#006600,color:#000
+    style START fill:#fffacd,stroke:#999,color:#000
+```
+
+---
+
+## Diagram 2 — Integration Points
+
+```mermaid
+flowchart TD
+    subgraph SSR["check-ssr.ts"]
+        direction TB
+        S1["Network.getResponseBody()
+        → rawHtml"] --> S2["detectBotWall(rawHtml)"]
+        S2 --> S3{isWall?}
+        S3 -->|Yes| S4["confidence = 'low'
+        reasoning = '[BOT WALL DETECTED: X] ...'"]
+        S3 -->|No| S5[proceed normally]
+        S4 --> S6["analyzeContent()
+        determineSSRStatus()
+        → SSRCheckResult"]
+        S5 --> S6
+    end
+
+    subgraph IMG["check-images.ts"]
+        direction TB
+        I1["Page.loadEventFired()
+        + 2s wait"] --> I2["Network.getResponseBody()
+        → rawHtml"]
+        I2 --> I3["detectBotWall(rawHtml)"]
+        I3 --> I4{isWall?}
+        I4 -->|Yes| I5["warnings.push('Bot wall detected...')
+        CheckImagesResult.warnings populated"]
+        I4 -->|No| I6[proceed normally]
+        I5 --> I7["Runtime.evaluate()
+        DOM image queries
+        → CheckImagesResult"]
+        I6 --> I7
+    end
+
+    subgraph FUTURE["runPhase1Discovery() — Step 7 (pending)"]
+        direction TB
+        P1["Network.getResponseBody()
+        → rawHtml"] --> P2["detectBotWall(rawHtml)"]
+        P2 --> P3{isWall?}
+        P3 -->|Yes| P4["throw BotWallError
+        ← abort entire run"]
+        P3 -->|No| P5["dismissConsentDialog()
+        crawlSiteLinks()
+        detectTechStack()
+        ..."]
+    end
+
+    style S4 fill:#fff3cd,stroke:#cc8800,color:#000
+    style I5 fill:#fff3cd,stroke:#cc8800,color:#000
+    style P4 fill:#ffcccc,stroke:#cc0000,color:#000
+    style FUTURE fill:#e0f0e0,stroke:#006600,color:#000
+```
+
+---
+
 ## Signature
 
 ```typescript
