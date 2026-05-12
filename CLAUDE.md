@@ -40,7 +40,7 @@ src/
 │   └── discover-phase1/   # Phase 1 autonomous discovery (feature directory)
 │       ├── index.ts       # Public barrel — all consumers import from here
 │       ├── bot-wall.ts    # detectBotWall + BOT_DETECTORS registry
-│       ├── consent.ts     # dismissConsentDialog + CONSENT_REGISTRY
+│       ├── modals.ts      # dismissBlockingModals + BLOCKING_MODAL_REGISTRY
 │       └── ...            # One file per future Phase 1 function
 └── utils/
     ├── artifacts.ts       # File saving utilities
@@ -58,7 +58,7 @@ implementation detail of the function, not a shared configuration resource.
 src/commands/discover-phase1/
 ├── index.ts        ← ONLY file consumers import from; re-exports everything
 ├── bot-wall.ts     ← BOT_DETECTORS registry + detectBotWall()
-├── consent.ts      ← CONSENT_REGISTRY + dismissConsentDialog()
+├── modals.ts       ← BLOCKING_MODAL_REGISTRY + dismissBlockingModals()
 ├── <next>.ts       ← Add one file per new Phase 1 function here
 ```
 

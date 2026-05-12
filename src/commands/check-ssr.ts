@@ -1,6 +1,6 @@
 import { createNewTarget, DEVICE_PROFILES, DeviceType } from '../cdp/connection';
 import { createRunDir, saveHtml, saveJson, extractDomain } from '../utils/artifacts';
-import { detectBotWall, dismissConsentDialog } from './discover-phase1';
+import { detectBotWall, dismissBlockingModals } from './discover-phase1';
 
 export interface CheckSSROptions {
   url: string;
@@ -92,8 +92,8 @@ export async function checkSSR(options: CheckSSROptions): Promise<SSRCheckResult
       }
     }
 
-    // Dismiss consent banner before reading rendered DOM so real content is visible
-    await dismissConsentDialog(client);
+    // Dismiss any blocking modals (routing, consent) before reading rendered DOM
+    await dismissBlockingModals(client);
 
     // Wait for JavaScript to execute
     await new Promise(resolve => setTimeout(resolve, 3000));

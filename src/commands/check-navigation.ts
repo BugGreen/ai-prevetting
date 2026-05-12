@@ -1,6 +1,6 @@
 import { createNewTarget, DEVICE_PROFILES, DeviceType } from '../cdp/connection';
 import { createRunDir, saveJson, extractDomain } from '../utils/artifacts';
-import { dismissConsentDialog } from './discover-phase1';
+import { dismissBlockingModals } from './discover-phase1';
 
 export interface NavigationCheckOptions {
   startUrl: string;
@@ -178,8 +178,8 @@ export async function checkNavigation(options: NavigationCheckOptions): Promise<
     await client.Page.loadEventFired();
     await waitForHydration(client);
 
-    // Dismiss consent banner so links are clickable
-    await dismissConsentDialog(client);
+    // Dismiss any blocking modals (routing, consent) so links are clickable
+    await dismissBlockingModals(client);
 
     // Clear any previous requests
     requests.length = 0;

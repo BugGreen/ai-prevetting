@@ -19,4 +19,4 @@
  */
 
 export { BotWallResult, detectBotWall } from './bot-wall';
-export { ConsentResult, dismissConsentDialog } from './consent';
+export { DismissResult, dismissBlockingModals } from './modals';

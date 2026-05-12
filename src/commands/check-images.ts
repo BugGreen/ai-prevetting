@@ -1,6 +1,6 @@
 import { createNewTarget, DEVICE_PROFILES, DeviceType } from '../cdp/connection';
 import { createRunDir, saveJson, extractDomain } from '../utils/artifacts';
-import { detectBotWall, dismissConsentDialog } from './discover-phase1';
+import { detectBotWall, dismissBlockingModals } from './discover-phase1';
 
 export interface CheckImagesOptions {
   url: string;
@@ -198,8 +198,8 @@ export async function checkImages(options: CheckImagesOptions): Promise<CheckIma
     // Wait for initial render
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Dismiss consent banner before DOM queries so real content is visible
-    await dismissConsentDialog(client);
+    // Dismiss any blocking modals (routing, consent) before DOM queries
+    await dismissBlockingModals(client);
 
     // Bot wall safety gate — run before DOM queries so vacuous results are flagged
     if (mainRequestId) {
