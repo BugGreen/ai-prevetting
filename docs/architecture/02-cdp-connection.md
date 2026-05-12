@@ -32,7 +32,7 @@ This distinction is central to understanding every command in this codebase.
 | Concept | In Chrome | Analogy |
 |---|---|---|
 | **Target** | A browser tab (or Worker, extension background page). Identified by a UUID. Exists independently of whether anything is connected to it. | A running process on the server |
-| **Connection** | A WebSocket session attached to a target. The channel through which you send CDP commands and receive events. | An SSH channel into that process |
+| **Connection** | A WebSocket session attached to a target. The channel through which CDP commands are sent and events are received. | An SSH channel into that process |
 
 Multiple connections can be opened to the same target (this codebase never does).
 A target persists even after disconnection. When `createNewTarget()` closes,

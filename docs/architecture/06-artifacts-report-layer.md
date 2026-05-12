@@ -3,17 +3,16 @@
 Files: `src/utils/artifacts.ts` · `src/utils/diff.ts` · `src/commands/execution-report.ts`
 
 This module contains the single most important function for the refactor:
-`parseStep1Report()`. Understanding it precisely tells you exactly what your
-autonomous replacement must produce.
+`parseStep1Report()`. Understanding it precisely defines what the autonomous replacement must produce.
 
 ---
 
 ## Concept 1 — parseStep1Report() / The Form Deserializer
 
 ### ELI5
-Imagine a paper form with fields that an analyst fills in by hand:
+Consider a paper form with fields that an analyst fills in by hand:
 "URL: example.com", "Page Types: PLP at /shoes, Homepage at /",
-"Tech Stack: React, Shopify". Someone scanned that form and now you have an image
+"Tech Stack: React, Shopify". Someone scanned that form, producing an image
 of handwriting. `parseStep1Report()` is the OCR software that reads the handwriting
 and extracts each field into a structured Python-dict equivalent.
 The problem: the form wasn't printed with checkboxes — it was filled in free-hand

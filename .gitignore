@@ -3,3 +3,7 @@ output/
 *.log
 .DS_Store
 .env
+
+# Task files
+Pre-Vetting_Task.txt
+Pre-Vetting_Task.md

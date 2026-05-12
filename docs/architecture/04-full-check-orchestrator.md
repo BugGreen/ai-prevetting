@@ -2,17 +2,17 @@
 
 **File:** `src/commands/full-check.ts`
 
-This is the file you will modify for the refactor.
+This is the file that will be modified for the refactor.
 
 ---
 
 ## Concept 1 — Promise.all() / Parallel Execution
 
 ### ELI5
-Imagine you need to make dinner: bake a cake, boil pasta, and toss a salad.
-You could do them one at a time — finish the cake, then start the pasta, then the salad.
-Total time: 60 minutes. Or you could put the cake in the oven, boil the pasta while it bakes,
-and toss the salad at the same time. Total time: ~20 minutes (the slowest task).
+Consider a cooking analogy: baking a cake, boiling pasta, and tossing a salad.
+Done sequentially — finish the cake, then start the pasta, then the salad — total time
+is 60 minutes. Done in parallel — cake in the oven while pasta boils and salad is tossed
+— total time drops to ~20 minutes (the slowest task).
 `Promise.all()` is the second approach — it starts all the checks simultaneously and
 waits for the last one to finish before collecting all the results.
 
@@ -66,7 +66,7 @@ async function trackCheck<T>(
 ```
 
 The `<T>` is a TypeScript generic — equivalent to Python's `TypeVar`. It means:
-"I don't know what type `fn` returns, but whatever it is, I'll preserve it in my output."
+"the return type of `fn` is unknown at definition time, but whatever it is, it is preserved in the output."
 This lets a single wrapper function handle `CompareHtmlResult`, `SSRCheckResult`,
 `CheckImagesResult`, etc., without losing type safety.
 
@@ -124,7 +124,7 @@ interface CheckTiming {
 ```
 
 `startMs`/`endMs` are relative to `baseTime` (the run's start epoch). This means
-you can reconstruct a Gantt chart of which checks ran concurrently from a single
+a Gantt chart of which checks ran concurrently can be reconstructed from a single
 JSON file. The `execution-report` command reads this file to generate the CC session
 documentation and cost estimates.
 
@@ -138,10 +138,10 @@ for the case where discovery runs but finds no suitable nav target.
 ## Concept 4 — findNavigationTargetUrl() / THE GAP
 
 ### ELI5
-This function is the structural engineer asking: "Which part of the land should I
-drill into?" Without the architect's sketch (the Step 1 report), it has no idea
-where to drill and simply tells the engineer to skip the soil test entirely.
-It looks at the list of page types the analyst found in Phase 1 — "PLP at /shoes",
+Consider the analogy of a structural engineer asking: "Which part of the land should
+be drilled?" Without the architect's sketch (the Step 1 report), there is no information
+about where to drill, so the soil test is skipped entirely.
+The function looks at the list of page types discovered in Phase 1 — "PLP at /shoes",
 "Homepage at /", "PDP at /shoes/nike-air-max" — and returns the URL of the
 most diagnostic page to test navigation against.
 
@@ -176,7 +176,7 @@ The Claude Code session receives no information about hard vs. soft navigation.
 **This is the exact gap the refactor must close.**
 
 ### Refactor Implications
-The fix lives here. We need to replace the null path with a call to a new
+The fix lives here. The null path must be replaced with a call to a new
 function — something like `discoverNavigationTarget(url)` — that autonomously
 crawls the homepage, scores candidate links by URL pattern heuristics
 (contains `/category/`, `/collection/`, `/c/`, `/shop/`, etc.), picks the
