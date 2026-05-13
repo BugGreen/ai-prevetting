@@ -164,6 +164,8 @@ export interface Step1ParsedReport {
   thirdPartyDomains?: import('../commands/discover-phase1/third-party').ThirdPartyResult;
   languages?: import('../commands/discover-phase1/languages').LanguageResult;
   queryParams?: import('../commands/discover-phase1/query-params').QueryParamResult;
+  serviceWorkers?: import('../commands/discover-phase1/service-workers').ServiceWorkerResult;
+  dataLayer?: import('../commands/discover-phase1/data-layer').DataLayerResult;
 }
 
 /**

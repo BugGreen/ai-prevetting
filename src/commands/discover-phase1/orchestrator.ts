@@ -18,6 +18,8 @@ import { detectTechStack } from './tech-stack';
 import { detectThirdPartyDomains } from './third-party';
 import { detectLanguages } from './languages';
 import { detectQueryParams } from './query-params';
+import { detectServiceWorkers } from './service-workers';
+import { detectDataLayer } from './data-layer';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -105,8 +107,12 @@ export class BotWallError extends Error {
  *                                       NON-FATAL: warns and continues on failure
  *  12. detectQueryParams()            → rawHtml → tracking params
  *                                       NON-FATAL: warns and continues on failure
- *  13. connection.close()             → destroy tab (always, via finally)
- *  14. return Step1ParsedReport
+ *  13. detectServiceWorkers()         → CDP Runtime.evaluate → SW registrations
+ *                                       NON-FATAL: warns and continues on failure
+ *  14. detectDataLayer()              → CDP Runtime.evaluate → GTM dataLayer
+ *                                       NON-FATAL: warns and continues on failure
+ *  15. connection.close()             → destroy tab (always, via finally)
+ *  16. return Step1ParsedReport
  *
  * Called by:
  *   - handleFullCheckCommand() in full-check.ts when no --report flag is passed
@@ -235,6 +241,28 @@ export async function runPhase1Discovery(url: string): Promise<Step1ParsedReport
       );
     }
 
+    // ── Step 13: Detect service workers (CDP, non-fatal) ──────────────────
+    let serviceWorkers: Step1ParsedReport['serviceWorkers'];
+    try {
+      serviceWorkers = await detectServiceWorkers(client);
+    } catch (err) {
+      console.warn(
+        `runPhase1Discovery: detectServiceWorkers failed — continuing without SW data. ` +
+        `(${(err as Error).message})`,
+      );
+    }
+
+    // ── Step 14: Detect data layer (CDP, non-fatal) ─────────────────────
+    let dataLayer: Step1ParsedReport['dataLayer'];
+    try {
+      dataLayer = await detectDataLayer(client);
+    } catch (err) {
+      console.warn(
+        `runPhase1Discovery: detectDataLayer failed — continuing without data layer info. ` +
+        `(${(err as Error).message})`,
+      );
+    }
+
     return {
       url,
       domain: extractDomain(url),
@@ -245,6 +273,8 @@ export async function runPhase1Discovery(url: string): Promise<Step1ParsedReport
       thirdPartyDomains,
       languages,
       queryParams,
+      serviceWorkers,
+      dataLayer,
     };
   } finally {
     // Always destroy the tab — even if BotWallError, timeout, or empty HTML error is thrown

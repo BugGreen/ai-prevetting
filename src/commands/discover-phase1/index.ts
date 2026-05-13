@@ -26,4 +26,6 @@ export { TechStackResult, detectTechStack } from './tech-stack';
 export { ThirdPartyResult, detectThirdPartyDomains } from './third-party';
 export { LanguageResult, detectLanguages } from './languages';
 export { QueryParamResult, detectQueryParams } from './query-params';
+export { ServiceWorkerResult, detectServiceWorkers } from './service-workers';
+export { DataLayerResult, detectDataLayer } from './data-layer';
 export { BotWallError, runPhase1Discovery } from './orchestrator';
