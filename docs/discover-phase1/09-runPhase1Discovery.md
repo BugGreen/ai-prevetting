@@ -29,6 +29,9 @@ sequenceDiagram
     participant M as modals.ts
     participant PT as page-types.ts
     participant TS as tech-stack.ts
+    participant TP as third-party.ts
+    participant LG as languages.ts
+    participant QP as query-params.ts
 
     FC->>O: runPhase1Discovery(url)
     O->>CDP: createNewTarget()
@@ -54,6 +57,15 @@ sequenceDiagram
 
     O->>TS: detectTechStack(rawHtml, headers)
     TS-->>O: TechStackResult
+
+    O->>TP: detectThirdPartyDomains(rawHtml, origin)
+    TP-->>O: ThirdPartyResult
+
+    O->>LG: detectLanguages(rawHtml)
+    LG-->>O: LanguageResult
+
+    O->>QP: detectQueryParams(rawHtml)
+    QP-->>O: QueryParamResult
 
     O->>CDP: connection.close()
     O-->>FC: Step1ParsedReport
@@ -81,11 +93,14 @@ flowchart TD
         P2["dismissBlockingModals()"]
         P3["discoverPageTypes()"]
         P4["detectTechStack()"]
-        P1 --> P2 --> P3 --> P4
+        P5["detectThirdPartyDomains()"]
+        P6["detectLanguages()"]
+        P7["detectQueryParams()"]
+        P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
     end
 
     F3 --> P1
-    P4 --> F4
+    P7 --> F4
 
     style F4 fill:#ccffcc,stroke:#006600,color:#000
     style F3 fill:#cce5ff,stroke:#0055cc,color:#000
@@ -122,9 +137,12 @@ export class BotWallError extends Error {
 | 5 | `Network.getResponseBody()` — capture `rawHtml` + `responseHeaders` | No — warns and continues with empty string |
 | 6 | `detectBotWall(rawHtml)` — safety gate | Yes — throws `BotWallError` |
 | 7 | `dismissBlockingModals(client, hostname)` — consent / routing modals | No |
-| 8 | `discoverPageTypes(client, url)` — crawl + classify → `pageTypes[]` | Yes |
+| 8 | `discoverPageTypes(client, url)` — crawl + classify → `pageTypes[]` | No |
 | 9 | `detectTechStack(rawHtml, responseHeaders)` → `techStack{}` | Yes |
-| 10 | `connection.close()` — destroy tab | Always — runs in `finally` |
+| 10 | `detectThirdPartyDomains(rawHtml, origin)` → external domains | No |
+| 11 | `detectLanguages(rawHtml)` → html lang + hreflang tags | No |
+| 12 | `detectQueryParams(rawHtml)` → tracking params | No |
+| 13 | `connection.close()` — destroy tab | Always — runs in `finally` |
 
 ---
 
@@ -134,7 +152,7 @@ The Chrome tab is always destroyed, regardless of outcome:
 
 ```typescript
 try {
-  // steps 2–9
+  // steps 2–12
 } finally {
   await connection.close();  // runs even if BotWallError is thrown
 }
@@ -194,9 +212,28 @@ Returns the same `Step1ParsedReport` interface consumed by `runFullCheck()`:
     CDN:          'Cloudflare',
     'Tag Manager': 'GTM',
   },
+  thirdPartyDomains: {
+    domains: [
+      { domain: 'cdn.shopify.com', count: 12, types: ['script', 'link'] },
+      { domain: 'www.googletagmanager.com', count: 3, types: ['script'] },
+    ],
+  },
+  languages: {
+    htmlLang: 'de',
+    hreflangTags: [
+      { lang: 'de', href: 'https://fritz-berger.de/' },
+      { lang: 'x-default', href: 'https://fritz-berger.de/' },
+    ],
+  },
+  queryParams: {
+    trackingParams: ['utm_source', 'utm_medium'],
+  },
   rawContent: '',
 }
 ```
 
 `summaryTable` is returned empty — it is populated by the individual CDP checks
 (`check-ssr`, `check-images`, etc.) that run in parallel after Phase 1 completes.
+
+The `thirdPartyDomains`, `languages`, and `queryParams` fields are optional —
+they are `undefined` if their respective detection step fails (non-fatal).

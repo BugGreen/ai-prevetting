@@ -15,6 +15,9 @@ import { detectBotWall, BotWallResult } from './bot-wall';
 import { dismissBlockingModals } from './modals';
 import { discoverPageTypes } from './page-types';
 import { detectTechStack } from './tech-stack';
+import { detectThirdPartyDomains } from './third-party';
+import { detectLanguages } from './languages';
+import { detectQueryParams } from './query-params';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -96,8 +99,14 @@ export class BotWallError extends Error {
  *   8. discoverPageTypes()            → crawl + classify → pageTypes[]
  *                                       NON-FATAL: warns and returns [] on failure
  *   9. detectTechStack()              → rawHtml + headers → techStack{}
- *  10. connection.close()             → destroy tab (always, via finally)
- *  11. return Step1ParsedReport
+ *  10. detectThirdPartyDomains()      → rawHtml → external domains
+ *                                       NON-FATAL: warns and continues on failure
+ *  11. detectLanguages()              → rawHtml → html lang + hreflang tags
+ *                                       NON-FATAL: warns and continues on failure
+ *  12. detectQueryParams()            → rawHtml → tracking params
+ *                                       NON-FATAL: warns and continues on failure
+ *  13. connection.close()             → destroy tab (always, via finally)
+ *  14. return Step1ParsedReport
  *
  * Called by:
  *   - handleFullCheckCommand() in full-check.ts when no --report flag is passed
@@ -193,6 +202,39 @@ export async function runPhase1Discovery(url: string): Promise<Step1ParsedReport
       techStack[category] = values.join(', ');
     }
 
+    // ── Step 10: Detect third-party domains (pure, non-fatal) ─────────────────
+    let thirdPartyDomains: Step1ParsedReport['thirdPartyDomains'];
+    try {
+      thirdPartyDomains = detectThirdPartyDomains(rawHtml, new URL(url).origin);
+    } catch (err) {
+      console.warn(
+        `runPhase1Discovery: detectThirdPartyDomains failed — continuing without third-party data. ` +
+        `(${(err as Error).message})`,
+      );
+    }
+
+    // ── Step 11: Detect languages (pure, non-fatal) ─────────────────────────
+    let languages: Step1ParsedReport['languages'];
+    try {
+      languages = detectLanguages(rawHtml);
+    } catch (err) {
+      console.warn(
+        `runPhase1Discovery: detectLanguages failed — continuing without language data. ` +
+        `(${(err as Error).message})`,
+      );
+    }
+
+    // ── Step 12: Detect query params (pure, non-fatal) ──────────────────────
+    let queryParams: Step1ParsedReport['queryParams'];
+    try {
+      queryParams = detectQueryParams(rawHtml);
+    } catch (err) {
+      console.warn(
+        `runPhase1Discovery: detectQueryParams failed — continuing without query param data. ` +
+        `(${(err as Error).message})`,
+      );
+    }
+
     return {
       url,
       domain: extractDomain(url),
@@ -200,6 +242,9 @@ export async function runPhase1Discovery(url: string): Promise<Step1ParsedReport
       pageTypes,
       techStack,
       rawContent: '',
+      thirdPartyDomains,
+      languages,
+      queryParams,
     };
   } finally {
     // Always destroy the tab — even if BotWallError, timeout, or empty HTML error is thrown
