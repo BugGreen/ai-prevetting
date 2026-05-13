@@ -20,6 +20,8 @@ import { detectLanguages } from './languages';
 import { detectQueryParams } from './query-params';
 import { detectServiceWorkers } from './service-workers';
 import { detectDataLayer } from './data-layer';
+import { discoverFilterSelector } from './filter-selector';
+import { fetchCruxData } from './crux';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -111,13 +113,19 @@ export class BotWallError extends Error {
  *                                       NON-FATAL: warns and continues on failure
  *  14. detectDataLayer()              → CDP Runtime.evaluate → GTM dataLayer
  *                                       NON-FATAL: warns and continues on failure
- *  15. connection.close()             → destroy tab (always, via finally)
- *  16. return Step1ParsedReport
+ *  15. discoverFilterSelector()        → CDP Runtime.evaluate → filter selector
+ *                                       NON-FATAL: warns and continues on failure
+ *                                       SKIPPED: if no PLP found in pageTypes
+ *  16. connection.close()             → destroy tab (always, via finally)
+ *  17. fetchCruxData()                → PageSpeed Insights API → CrUX field data
+ *                                       NON-FATAL: warns and continues on failure
+ *                                       SKIPPED: if no CRUX_API_KEY env var
+ *  18. return Step1ParsedReport
  *
  * Called by:
  *   - handleFullCheckCommand() in full-check.ts when no --report flag is passed
  */
-export async function runPhase1Discovery(url: string): Promise<Step1ParsedReport> {
+async function runPhase1DiscoveryCDP(url: string): Promise<Step1ParsedReport> {
   const connection = await createNewTarget();
   const { client } = connection;
 
@@ -263,7 +271,23 @@ export async function runPhase1Discovery(url: string): Promise<Step1ParsedReport
       );
     }
 
-    return {
+    // ── Step 15: Discover filter selector (CDP, non-fatal, only if PLP found) ─
+    let filterSelector: string | null | undefined;
+    const plp = pageTypes.find(pt => /plp|category|listing/i.test(pt.name));
+    if (plp) {
+      try {
+        const filterResult = await discoverFilterSelector(client, plp.urlPattern);
+        filterSelector = filterResult.selector;
+      } catch (err) {
+        console.warn(
+          `runPhase1Discovery: discoverFilterSelector failed — continuing without filter selector. ` +
+          `(${(err as Error).message})`,
+        );
+      }
+    }
+
+    // Build partial report before closing the tab
+    const report: Step1ParsedReport = {
       url,
       domain: extractDomain(url),
       summaryTable: {},
@@ -275,9 +299,38 @@ export async function runPhase1Discovery(url: string): Promise<Step1ParsedReport
       queryParams,
       serviceWorkers,
       dataLayer,
+      filterSelector: filterSelector ?? null,
     };
+
+    return report;
   } finally {
     // Always destroy the tab — even if BotWallError, timeout, or empty HTML error is thrown
     await connection.close();
   }
+}
+
+/**
+ * Full Phase 1 discovery including post-CDP steps (CrUX API).
+ * Wraps runPhase1DiscoveryCDP and appends CrUX data after the tab is closed.
+ */
+export async function runPhase1Discovery(url: string): Promise<Step1ParsedReport> {
+  const report = await runPhase1DiscoveryCDP(url);
+
+  // ── Step 16: Fetch CrUX data (external API, non-fatal, after tab closed) ─
+  try {
+    const cruxData = await fetchCruxData(url);
+    if (cruxData) {
+      report.cruxData = {
+        mobile: cruxData.mobile ?? {},
+        desktop: cruxData.desktop ?? {},
+      };
+    }
+  } catch (err) {
+    console.warn(
+      `runPhase1Discovery: fetchCruxData failed — continuing without CrUX data. ` +
+      `(${(err as Error).message})`,
+    );
+  }
+
+  return report;
 }

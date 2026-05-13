@@ -166,6 +166,7 @@ export interface Step1ParsedReport {
   queryParams?: import('../commands/discover-phase1/query-params').QueryParamResult;
   serviceWorkers?: import('../commands/discover-phase1/service-workers').ServiceWorkerResult;
   dataLayer?: import('../commands/discover-phase1/data-layer').DataLayerResult;
+  filterSelector?: string | null;
 }
 
 /**

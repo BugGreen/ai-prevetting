@@ -28,4 +28,6 @@ export { LanguageResult, detectLanguages } from './languages';
 export { QueryParamResult, detectQueryParams } from './query-params';
 export { ServiceWorkerResult, detectServiceWorkers } from './service-workers';
 export { DataLayerResult, detectDataLayer } from './data-layer';
+export { FilterSelectorResult, discoverFilterSelector } from './filter-selector';
+export { CruxResult, fetchCruxData } from './crux';
 export { BotWallError, runPhase1Discovery } from './orchestrator';

@@ -34,6 +34,8 @@ sequenceDiagram
     participant QP as query-params.ts
     participant SW as service-workers.ts
     participant DL as data-layer.ts
+    participant FS as filter-selector.ts
+    participant CX as crux.ts
 
     FC->>O: runPhase1Discovery(url)
     O->>CDP: createNewTarget()
@@ -75,7 +77,16 @@ sequenceDiagram
     O->>DL: detectDataLayer(client)
     DL-->>O: DataLayerResult
 
+    opt PLP found in pageTypes
+        O->>FS: discoverFilterSelector(client, plpUrl)
+        FS-->>O: FilterSelectorResult
+    end
+
     O->>CDP: connection.close()
+
+    O->>CX: fetchCruxData(url)
+    CX-->>O: CruxResult
+
     O-->>FC: Step1ParsedReport
 ```
 
@@ -106,11 +117,13 @@ flowchart TD
         P7["detectQueryParams()"]
         P8["detectServiceWorkers()"]
         P9["detectDataLayer()"]
-        P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9
+        P10["discoverFilterSelector()"]
+        P11["fetchCruxData()"]
+        P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9 --> P10 --> P11
     end
 
     F3 --> P1
-    P9 --> F4
+    P11 --> F4
 
     style F4 fill:#ccffcc,stroke:#006600,color:#000
     style F3 fill:#cce5ff,stroke:#0055cc,color:#000
@@ -154,7 +167,9 @@ export class BotWallError extends Error {
 | 12 | `detectQueryParams(rawHtml)` → tracking params | No |
 | 13 | `detectServiceWorkers(client)` → SW registrations | No |
 | 14 | `detectDataLayer(client)` → GTM dataLayer keys | No |
-| 15 | `connection.close()` — destroy tab | Always — runs in `finally` |
+| 15 | `discoverFilterSelector(client, plpUrl)` → filter selector | No (skipped if no PLP) |
+| 16 | `connection.close()` — destroy tab | Always — runs in `finally` |
+| 17 | `fetchCruxData(url)` → CrUX field data (mobile + desktop) | No (skipped if no API key) |
 
 ---
 
@@ -164,7 +179,7 @@ The Chrome tab is always destroyed, regardless of outcome:
 
 ```typescript
 try {
-  // steps 2–14
+  // steps 2–15
 } finally {
   await connection.close();  // runs even if BotWallError is thrown
 }
@@ -251,6 +266,11 @@ Returns the same `Step1ParsedReport` interface consumed by `runFullCheck()`:
     entryCount: 12,
     interestingKeys: ['user.loginStatus', 'currency'],
   },
+  filterSelector: '[data-filter-panel]',
+  cruxData: {
+    mobile: { LCP: '2500 (NEEDS_IMPROVEMENT)', CLS: '10 (GOOD)' },
+    desktop: { LCP: '1800 (GOOD)', CLS: '5 (GOOD)' },
+  },
   rawContent: '',
 }
 ```
@@ -259,5 +279,5 @@ Returns the same `Step1ParsedReport` interface consumed by `runFullCheck()`:
 (`check-ssr`, `check-images`, etc.) that run in parallel after Phase 1 completes.
 
 The optional fields (`thirdPartyDomains`, `languages`, `queryParams`,
-`serviceWorkers`, `dataLayer`) are `undefined` if their respective detection
-step fails (non-fatal).
+`serviceWorkers`, `dataLayer`, `filterSelector`, `cruxData`) are `undefined`
+or `null` if their respective detection step fails or is skipped (non-fatal).
