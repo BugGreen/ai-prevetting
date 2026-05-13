@@ -23,3 +23,4 @@ export { DismissResult, dismissBlockingModals } from './modals';
 export { SiteLink, crawlSiteLinks } from './crawl';
 export { PageType, discoverPageTypes, selectPageTypes, MIN_CONFIDENCE_THRESHOLD } from './page-types';
 export { TechStackResult, detectTechStack } from './tech-stack';
+export { BotWallError, runPhase1Discovery } from './orchestrator';
