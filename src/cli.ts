@@ -281,7 +281,7 @@ program
 program
   .command('full-check [url]')
   .description('Run all pre-vetting checks in parallel and generate a Markdown report')
-  .option('-r, --report <file>', 'Extract URL from Step 1 report file (instead of passing URL)')
+  .option('-i, --import-phase1 <file>', 'Import a Phase 1 report file instead of running autonomous discovery')
   .option('-m, --mobile', 'Test mobile instead of desktop')
   .option('--skip-wpt', 'Skip WebPageTest')
   .option('--wpt-key <key>', 'WPT API key (overrides .env)')
@@ -289,7 +289,7 @@ program
   .action(async (url: string | undefined, options) => {
     try {
       await handleFullCheckCommand(url, {
-        reportFile: options.report,
+        importPhase1: options.importPhase1,
         mobile: options.mobile,
         skipWpt: options.skipWpt,
         wptKey: options.wptKey,

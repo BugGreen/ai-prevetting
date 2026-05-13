@@ -14,6 +14,7 @@ import { checkImages, CheckImagesResult } from './check-images';
 import { getHeaders, HeadersResult } from './get-headers';
 import { checkNavigation, NavigationCheckResult } from './check-navigation';
 import { runWPT } from './run-wpt';
+import { runPhase1Discovery, BotWallError } from './discover-phase1';
 import {
   extractDomain,
   createRunDir,
@@ -31,6 +32,7 @@ export interface FullCheckOptions {
   save?: boolean;
   wptKey?: string;
   step1Report?: Step1ParsedReport;
+  phase1Timing?: CheckTiming | null;
 }
 
 /**
@@ -41,6 +43,7 @@ export interface ExecutionMetrics {
   endTime: string;
   totalDurationMs: number;
   checks: {
+    phase1Discovery: CheckTiming | null;
     htmlComparison: CheckTiming;
     ssrCheck: CheckTiming;
     imageCheck: CheckTiming;
@@ -70,10 +73,10 @@ export interface ExecutionError {
 export interface FullCheckResult {
   url: string;
   timestamp: string;
-  htmlComparison: CompareHtmlResult;
-  ssrCheck: SSRCheckResult;
-  imageCheck: CheckImagesResult;
-  headerCheck: HeadersResult;
+  htmlComparison: CompareHtmlResult | null;
+  ssrCheck: SSRCheckResult | null;
+  imageCheck: CheckImagesResult | null;
+  headerCheck: HeadersResult | null;
   navigationCheck: NavigationCheckResult | null;
   wptResult: Record<string, unknown> | null;
   step1Report: Step1ParsedReport | null;
@@ -351,9 +354,17 @@ export async function runFullCheck(options: FullCheckOptions): Promise<FullCheck
     { result: NavigationCheckResult | null; timing: CheckTiming } | null
   ];
 
-  // Check for critical failures
-  if (!htmlResult.result || !ssrResult.result || !imageResult.result || !headerResult.result) {
-    throw new Error('One or more critical checks failed. See errors above.');
+  // Warn about failures but continue so metrics are always saved
+  const failedChecks = [
+    !htmlResult.result && 'HTML Comparison',
+    !ssrResult.result && 'SSR Check',
+    !imageResult.result && 'Image Check',
+    !headerResult.result && 'Headers Check',
+  ].filter(Boolean);
+
+  if (failedChecks.length > 0) {
+    console.warn(`Warning: ${failedChecks.join(', ')} failed — continuing to save metrics.`);
+    warnings.push(`Failed checks: ${failedChecks.join(', ')}`);
   }
 
   console.log('');
@@ -409,6 +420,7 @@ export async function runFullCheck(options: FullCheckOptions): Promise<FullCheck
     endTime: endTime.toISOString(),
     totalDurationMs: endTime.getTime() - baseTime,
     checks: {
+      phase1Discovery: options.phase1Timing ?? null,
       htmlComparison: htmlResult.timing,
       ssrCheck: ssrResult.timing,
       imageCheck: imageResult.timing,
@@ -435,10 +447,10 @@ export async function runFullCheck(options: FullCheckOptions): Promise<FullCheck
   return {
     url,
     timestamp,
-    htmlComparison: htmlResult.result,
-    ssrCheck: ssrResult.result,
-    imageCheck: imageResult.result,
-    headerCheck: headerResult.result,
+    htmlComparison: htmlResult.result ?? null,
+    ssrCheck: ssrResult.result ?? null,
+    imageCheck: imageResult.result ?? null,
+    headerCheck: headerResult.result ?? null,
     navigationCheck: navResult?.result || null,
     wptResult,
     step1Report,
@@ -462,20 +474,22 @@ function formatDuration(ms: number): string {
  * CLI handler for full-check command
  */
 export async function handleFullCheckCommand(urlArg: string | undefined, options: {
-  reportFile?: string;
+  importPhase1?: string;
   mobile?: boolean;
   skipWpt?: boolean;
   wptKey?: string;
   save?: boolean;
 }): Promise<void> {
   try {
-    // Determine URL: from argument, from report file, or error
     let url = urlArg;
     let step1Report: Step1ParsedReport | null = null;
+    let phase1Timing: CheckTiming | null = null;
+    const handlerStart = Date.now();
 
-    if (options.reportFile) {
-      console.log(`Reading Step 1 report from: ${options.reportFile}`);
-      const reportContent = readReportContent(options.reportFile);
+    if (options.importPhase1) {
+      // ── Manual fallback path ──────────────────────────────────────────────
+      console.log(`Importing Phase 1 report from: ${options.importPhase1}`);
+      const reportContent = readReportContent(options.importPhase1);
       step1Report = parseStep1Report(reportContent);
 
       if (!url && step1Report.url) {
@@ -483,13 +497,52 @@ export async function handleFullCheckCommand(urlArg: string | undefined, options
         console.log(`Extracted URL: ${url}`);
       }
 
-      console.log(`Parsed Step 1 findings: ${Object.keys(step1Report.summaryTable).length} categories`);
       console.log(`Page types found: ${step1Report.pageTypes.length}`);
       console.log('');
+    } else {
+      // ── Autonomous path ───────────────────────────────────────────────────
+      if (!url) {
+        throw new Error('URL required. Provide as argument or use --import-phase1 <file>.');
+      }
+      console.log('Running autonomous Phase 1 discovery...');
+      const startMs = Date.now() - handlerStart;
+      try {
+        step1Report = await runPhase1Discovery(url);
+        const endMs = Date.now() - handlerStart;
+        phase1Timing = {
+          name: 'Phase 1 Discovery',
+          startMs,
+          endMs,
+          durationMs: endMs - startMs,
+          status: 'success',
+        };
+        console.log(`Page types found: ${step1Report.pageTypes.length}`);
+        console.log('');
+      } catch (err) {
+        const endMs = Date.now() - handlerStart;
+        if (err instanceof BotWallError) {
+          console.error(`Bot wall detected on ${url}.`);
+          console.error(`  Type: ${err.wallType}, Confidence: ${err.wallConfidence}`);
+          console.error('Manual bypass required. Use --import-phase1 with a Phase 1 report.');
+          throw err;
+        }
+        // Non-BotWallError: record failed timing, warn, continue
+        phase1Timing = {
+          name: 'Phase 1 Discovery',
+          startMs,
+          endMs,
+          durationMs: endMs - startMs,
+          status: 'failed',
+          error: (err as Error).message,
+        };
+        console.warn(`Phase 1 discovery failed: ${(err as Error).message}`);
+        console.warn('Continuing without Phase 1 data — navigation check will be skipped.');
+        console.log('');
+      }
     }
 
     if (!url) {
-      throw new Error('URL required. Provide as argument or use --report <file> to extract from Step 1 report.');
+      throw new Error('URL required. Provide as argument or use --import-phase1 <file>.');
     }
 
     const result = await runFullCheck({
@@ -499,6 +552,7 @@ export async function handleFullCheckCommand(urlArg: string | undefined, options
       wptKey: options.wptKey,
       save: options.save,
       step1Report: step1Report || undefined,
+      phase1Timing,
     });
 
     console.log('');
@@ -509,15 +563,23 @@ export async function handleFullCheckCommand(urlArg: string | undefined, options
     console.log(`URL: ${result.url}`);
     console.log('');
     console.log('Summary:');
-    console.log(`  SSR: ${result.ssrCheck.analysis.isSSR ? 'Yes' : 'No'} (${result.ssrCheck.analysis.confidence})`);
-    console.log(`  HTML Diff: ${result.htmlComparison.comparison.hasDifferences ? 'Yes' : 'No'}`);
+    if (result.ssrCheck) {
+      console.log(`  SSR: ${result.ssrCheck.analysis.isSSR ? 'Yes' : 'No'} (${result.ssrCheck.analysis.confidence})`);
+    }
+    if (result.htmlComparison) {
+      console.log(`  HTML Diff: ${result.htmlComparison.comparison.hasDifferences ? 'Yes' : 'No'}`);
+    }
     if (result.navigationCheck) {
       console.log(`  Navigation: ${result.navigationCheck.navigationType.toUpperCase()} (via ${result.navigationCheck.navigationMethod})`);
     }
-    console.log(`  Image Optimization: ${result.imageCheck.summary.optimizedPercentage}%`);
-    console.log(`  ATF Lazy Issues: ${result.imageCheck.lazyLoadAnalysis.aboveTheFoldLazyLoaded.length}`);
-    console.log(`  CDN: ${result.headerCheck.analysis.cdn || 'None'}`);
-    console.log(`  CSP: ${result.headerCheck.analysis.csp ? 'Yes' : 'No'}`);
+    if (result.imageCheck) {
+      console.log(`  Image Optimization: ${result.imageCheck.summary.optimizedPercentage}%`);
+      console.log(`  ATF Lazy Issues: ${result.imageCheck.lazyLoadAnalysis.aboveTheFoldLazyLoaded.length}`);
+    }
+    if (result.headerCheck) {
+      console.log(`  CDN: ${result.headerCheck.analysis.cdn || 'None'}`);
+      console.log(`  CSP: ${result.headerCheck.analysis.csp ? 'Yes' : 'No'}`);
+    }
 
     if (result.wptResult) {
       const insights = result.wptResult.insights as Record<string, unknown>;
@@ -534,6 +596,9 @@ export async function handleFullCheckCommand(urlArg: string | undefined, options
     console.log(`Total Duration: ${formatDuration(result.executionMetrics.totalDurationMs)}`);
     console.log('Check Timings:');
     const checks = result.executionMetrics.checks;
+    if (checks.phase1Discovery) {
+      console.log(`  Phase 1 Discovery: ${formatDuration(checks.phase1Discovery.durationMs)}`);
+    }
     console.log(`  HTML Comparison: ${formatDuration(checks.htmlComparison.durationMs)}`);
     console.log(`  SSR Check: ${formatDuration(checks.ssrCheck.durationMs)}`);
     console.log(`  Image Check: ${formatDuration(checks.imageCheck.durationMs)}`);
@@ -557,6 +622,9 @@ export async function handleFullCheckCommand(urlArg: string | undefined, options
       console.log(`  Metrics JSON: ${result.savedTo}/execution-metrics.json`);
     }
   } catch (error) {
+    if (error instanceof BotWallError) {
+      throw error;
+    }
     console.error('Error:', (error as Error).message);
     process.exit(1);
   }
