@@ -65,4 +65,42 @@ describe('detectTechStack', () => {
 
     expect(result['Server']).toBeUndefined();
   });
+
+  // ── Extended registry tests ─────────────────────────────────────────────────
+
+  it('detects personalization engines from HTML signals', () => {
+    const html = '<script src="https://cdn.epoq.de/assets/shop/epoq-inspire.live.js"></script>' +
+      '<script>window.Nosto = {};</script>';
+
+    const result = detectTechStack(html, {});
+
+    expect(result['Personalization']).toContain('Epoq');
+    expect(result['Personalization']).toContain('Nosto');
+  });
+
+  it('detects consent management platforms from HTML signals', () => {
+    const html = '<script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js"></script>';
+
+    const result = detectTechStack(html, {});
+
+    expect(result['Consent']).toContain('OneTrust');
+  });
+
+  it('detects RUM/APM tools from HTML signals', () => {
+    const html = '<script>window.DD_RUM && window.DD_RUM.init({});</script>' +
+      '<script src="https://www.clarity.ms/tag/abc123"></script>';
+
+    const result = detectTechStack(html, {});
+
+    expect(result['RUM/APM']).toContain('Datadog');
+    expect(result['RUM/APM']).toContain('Microsoft Clarity');
+  });
+
+  it('detects search providers from HTML signals', () => {
+    const html = '<script src="https://c.searchhub.io/9Z7HgHCCz"></script>';
+
+    const result = detectTechStack(html, {});
+
+    expect(result['Search']).toContain('SearchHub');
+  });
 });

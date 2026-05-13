@@ -1,7 +1,7 @@
 # detectTechStack()
 
 **File:** `src/commands/discover-phase1/tech-stack.ts`
-**Tests:** `src/__tests__/discover-phase1/detectTechStack.test.ts` (3 tests)
+**Tests:** `src/__tests__/discover-phase1/detectTechStack.test.ts` (12 tests)
 **Status:** Implemented ✅
 
 ---
@@ -28,9 +28,9 @@ flowchart TD
 
     HTML --> HMATCH{"pattern.test(rawHtml)?"}
     HMATCH -->|No| HNEXT[next signal]
-    HMATCH -->|Yes| HSKIP{"category already set?"}
-    HSKIP -->|"Yes — first match wins"| HNEXT
-    HSKIP -->|No| HSET["result.category = value"]
+    HMATCH -->|Yes| HSKIP{"duplicate value?"}
+    HSKIP -->|Yes| HNEXT
+    HSKIP -->|No| HSET["push(result, category, value)"]
     HSET --> HNEXT
     HNEXT --> HTML
 
@@ -38,9 +38,7 @@ flowchart TD
 
     NORM --> HDR["Iterate HEADER_SIGNALS registry"]
 
-    HDR --> HDRSKIP{"category already set?"}
-    HDRSKIP -->|Yes| HDRNEXT[next signal]
-    HDRSKIP -->|No| HDRPRESENT{"header present?"}
+    HDR --> HDRPRESENT{"header present?"}
     HDRPRESENT -->|No| HDRNEXT
     HDRPRESENT -->|Yes| HDRFILTER{"contains / equals\nconstraint passes?"}
     HDRFILTER -->|No| HDRNEXT
@@ -88,8 +86,8 @@ export function detectTechStack(
   headers: Record<string, string>,
 ): TechStackResult
 
-export type TechStackResult = Record<string, string>;
-// e.g. { Framework: 'Next.js', CMS: 'Shopify', CDN: 'Cloudflare', 'Tag Manager': 'GTM' }
+export type TechStackResult = Record<string, string[]>;
+// e.g. { Framework: ['Next.js', 'React'], CMS: ['Shopify'], CDN: ['Cloudflare'] }
 ```
 
 Pure synchronous function — no CDP, no async. All inputs are plain strings
@@ -99,33 +97,100 @@ collected upstream by `runPhase1Discovery()`.
 
 ## Strategy
 
-Two static registries are iterated in order. **First match per category wins.**
+Two static registries are iterated in order. **All matching signals accumulate**
+per category (multi-value). A Next.js page correctly yields
+`{ Framework: ['Next.js', 'React'] }` because both markers are present.
 Adding a new technology = adding one entry to the appropriate registry —
 function body never changes.
 
-### HTML Signals
+### HTML Signals (42 entries, 12 categories)
+
+**Frameworks:**
+
+| Pattern | Value |
+|---|---|
+| `__NEXT_DATA__` | Next.js |
+| `__NUXT__` / `window.__nuxt` | Nuxt |
+| `data-reactroot` | React |
+| `data-v-[a-f0-9]` | Vue |
+
+**CMS / E-commerce:**
+
+| Pattern | Value |
+|---|---|
+| `window.Shopify =` | Shopify |
+| `window.Magento =` | Magento |
+| `window._mstConfig` / `window.SalesforceInteractions` | Salesforce CC |
+| `window.Shopware` / `shopware` | Shopware |
+| `woocommerce` | WooCommerce |
+| `PrestaShop` | PrestaShop |
+
+**A/B Testing:**
+
+| Pattern | Value |
+|---|---|
+| `window.optimizely` / `window.Optimizely` | Optimizely |
+| `window.VWO` | VWO |
+| `window.ABTasty =` | ABTasty |
+| `window.google_optimize` | Google Optimize |
+
+**Personalization / Recommendations:**
+
+| Pattern | Value |
+|---|---|
+| `window.Nosto` / `nostojs` | Nosto |
+| `window.DY` / `window.DYO` | Dynamic Yield |
+| `window.Bloomreach` / `brSM` | Bloomreach |
+| `window.Monetate` | Monetate |
+| `cdn.epoq.de` / `epoq-inspire` | Epoq |
+| `window.FactFinder` / `factfinder` | FactFinder |
+
+**Search:**
+
+| Pattern | Value |
+|---|---|
+| `algolia` / `algoliasearch` | Algolia |
+| `searchhub.io` | SearchHub |
+| `window.Klevu` | Klevu |
+| `window.Doofinder` | Doofinder |
+| `searchspring` | Searchspring |
+
+**RUM/APM:**
+
+| Pattern | Value |
+|---|---|
+| `window.newrelic` / `NREUM` | New Relic |
+| `window.DD_RUM` / `datadoghq` | Datadog |
+| `window._satellite` | Adobe Launch |
+| `window.Sentry` / `sentry-trace` | Sentry |
+| `clarity.ms` | Microsoft Clarity |
+
+**Consent:**
+
+| Pattern | Value |
+|---|---|
+| `cookiebot` / `CybotCookiebot` | Cookiebot |
+| `onetrust` / `cookielaw.org` | OneTrust |
+| `usercentrics` | Usercentrics |
+| `consentmanager` | Consentmanager |
+
+**Image CDN:**
+
+| Pattern | Value |
+|---|---|
+| `cloudinary.com` | Cloudinary |
+| `imgix.net` | imgix |
+| `scene7.com` | Scene7 |
+
+**Other:**
 
 | Pattern | Category | Value |
 |---|---|---|
-| `__NEXT_DATA__` | Framework | Next.js |
-| `__NUXT__` / `window.__nuxt` | Framework | Nuxt |
-| `data-reactroot` | Framework | React |
-| `data-v-[a-f0-9]` | Framework | Vue |
-| `window.Shopify =` | CMS | Shopify |
-| `window.Magento =` | CMS | Magento |
-| `window._mstConfig` / `window.SalesforceInteractions` | CMS | Salesforce CC |
-| `window.optimizely` / `window.Optimizely` | AB Testing | Optimizely |
-| `window.VWO` | AB Testing | VWO |
-| `window.ABTasty =` | AB Testing | ABTasty |
-| `window.google_optimize` | AB Testing | Google Optimize |
 | `window.dataLayer =` | Tag Manager | GTM |
 | `<script type="speculationrules"` | Speculation Rules | Yes |
 | `SW_BAQEND` / `"baqend"` | Speed Kit | Active |
 
-Next.js is listed before generic React because every Next.js page also has
-`data-reactroot` — the more specific pattern must win.
-
-### Header Signals
+### Header Signals (14 entries)
 
 | Header | Constraint | Category | Value |
 |---|---|---|---|
@@ -139,15 +204,12 @@ Next.js is listed before generic React because every Next.js page also has
 | `server` | contains `cloudflare` | CDN | Cloudflare |
 | `server` | contains `akamai` | CDN | Akamai |
 | `x-cache-status` | present | CDN | Generic CDN |
-| `x-powered-by` | present | Server | *(raw header value)* |
-| `x-generator` | present | CMS | *(raw header value)* |
+| `x-shopify-stage` | present | CMS | Shopify |
+| `x-newrelic-app-data` | present | RUM/APM | New Relic |
+| `x-powered-by` | present | Server | *(raw value)* |
+| `x-generator` | present | CMS | *(raw value)* |
 
-Header names are normalised to lowercase before comparison so casing
-differences between servers never cause missed detections.
-
-For `x-powered-by` and `x-generator`, the raw header value is used as-is
-(the `value` field is an empty-string sentinel, replaced with the actual
-header value at runtime).
+Header names are normalised to lowercase before comparison.
 
 ---
 
@@ -163,17 +225,22 @@ import dependency — `tech-stack.ts` is a Phase 1 Discovery module and
 ## Output Example
 
 ```typescript
-// fritz-berger.de
+// fritz-berger.de (after flattening in orchestrator)
 {
-  Framework: 'Next.js',
-  CDN:       'Cloudflare',
   'Tag Manager': 'GTM',
+  Consent:       'OneTrust',
+  'AB Testing':  'ABTasty',
+  Search:        'SearchHub',
+  Personalization: 'Epoq',
+  'RUM/APM':     'Microsoft Clarity',
 }
 
-// Shopify store
+// Shopify store with multiple frameworks
 {
-  CMS:         'Shopify',
-  CDN:         'Fastly',
+  Framework:    'Next.js, React',
+  CMS:          'Shopify',
+  CDN:          'Fastly',
   'AB Testing': 'Optimizely',
+  Consent:      'Cookiebot',
 }
 ```

@@ -90,6 +90,44 @@ const HTML_SIGNALS: HtmlSignal[] = [
   // Tag management / data layer
   { pattern: /window\.dataLayer\s*=/,        category: 'Tag Manager', value: 'GTM' },
 
+  // Personalization / Recommendation engines
+  { pattern: /window\.Nosto|nostojs/,                     category: 'Personalization', value: 'Nosto' },
+  { pattern: /window\.DY\b|window\.DYO/,                  category: 'Personalization', value: 'Dynamic Yield' },
+  { pattern: /window\.Bloomreach|brSM/,                   category: 'Personalization', value: 'Bloomreach' },
+  { pattern: /window\.Monetate/,                          category: 'Personalization', value: 'Monetate' },
+  { pattern: /cdn\.epoq\.de|epoq-inspire/,               category: 'Personalization', value: 'Epoq' },
+  { pattern: /window\.FactFinder|factfinder/,             category: 'Personalization', value: 'FactFinder' },
+
+  // Search providers
+  { pattern: /algolia|algoliasearch/,                     category: 'Search', value: 'Algolia' },
+  { pattern: /searchhub\.io/,                             category: 'Search', value: 'SearchHub' },
+  { pattern: /window\.Klevu/,                             category: 'Search', value: 'Klevu' },
+  { pattern: /window\.Doofinder/,                         category: 'Search', value: 'Doofinder' },
+  { pattern: /searchspring/,                              category: 'Search', value: 'Searchspring' },
+
+  // RUM / APM tools
+  { pattern: /window\.newrelic|NREUM/,                    category: 'RUM/APM', value: 'New Relic' },
+  { pattern: /window\.DD_RUM|datadoghq/,                  category: 'RUM/APM', value: 'Datadog' },
+  { pattern: /window\._satellite/,                        category: 'RUM/APM', value: 'Adobe Launch' },
+  { pattern: /window\.Sentry|sentry-trace/,               category: 'RUM/APM', value: 'Sentry' },
+  { pattern: /clarity\.ms/,                               category: 'RUM/APM', value: 'Microsoft Clarity' },
+
+  // Consent management platforms
+  { pattern: /cookiebot|CybotCookiebot/,                  category: 'Consent', value: 'Cookiebot' },
+  { pattern: /onetrust|cookielaw\.org/,                   category: 'Consent', value: 'OneTrust' },
+  { pattern: /usercentrics/,                              category: 'Consent', value: 'Usercentrics' },
+  { pattern: /consentmanager/,                            category: 'Consent', value: 'Consentmanager' },
+
+  // CMS / E-commerce platforms (extend)
+  { pattern: /window\.Shopware|shopware/,                 category: 'CMS', value: 'Shopware' },
+  { pattern: /woocommerce/,                               category: 'CMS', value: 'WooCommerce' },
+  { pattern: /PrestaShop/,                                category: 'CMS', value: 'PrestaShop' },
+
+  // Image CDN
+  { pattern: /cloudinary\.com/,                           category: 'Image CDN', value: 'Cloudinary' },
+  { pattern: /imgix\.net/,                                category: 'Image CDN', value: 'imgix' },
+  { pattern: /scene7\.com/,                               category: 'Image CDN', value: 'Scene7' },
+
   // Performance / delivery features
   { pattern: /<script[^>]+type=["']speculationrules["']/, category: 'Speculation Rules', value: 'Yes' },
   { pattern: /SW_BAQEND|["']baqend["']/,                  category: 'Speed Kit',         value: 'Active' },
@@ -117,6 +155,12 @@ const HEADER_SIGNALS: HeaderSignal[] = [
   { header: 'server',           contains: 'cloudflare',    category: 'CDN', value: 'Cloudflare' },
   { header: 'server',           contains: 'akamai',        category: 'CDN', value: 'Akamai' },
   { header: 'x-cache-status',                              category: 'CDN', value: 'Generic CDN' },
+
+  // CMS / platform via headers
+  { header: 'x-shopify-stage',                              category: 'CMS', value: 'Shopify' },
+
+  // RUM/APM via headers
+  { header: 'x-newrelic-app-data',                          category: 'RUM/APM', value: 'New Relic' },
 
   // Server / framework via headers — raw header value used directly
   { header: 'x-powered-by', category: 'Server', useRawValue: true },
