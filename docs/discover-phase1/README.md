@@ -62,19 +62,24 @@ These use `fetch()` to call external APIs. Run after the Chrome tab is closed.
 ```
  1. createNewTarget()              — fresh Chrome tab
  2. Network/Page/Runtime.enable()
- 3. Page.navigate(url)             — 30s timeout
- 4. Network.getResponseBody()      — rawHtml + headers (FATAL if empty)
- 5. detectBotWall()                — FATAL if wall detected
- 6. dismissBlockingModals()        — NON-FATAL
- 7. discoverPageTypes()            — NON-FATAL
- 8. detectTechStack()              — pure
- 9. detectThirdPartyDomains()      — pure, NON-FATAL
-10. detectLanguages()              — pure, NON-FATAL
-11. detectQueryParams()            — pure, NON-FATAL
-12. detectServiceWorkers()         — CDP, NON-FATAL
-13. detectDataLayer()              — CDP, NON-FATAL
-14. discoverFilterSelector()       — CDP, NON-FATAL (only if PLP found)
-15. connection.close()             — always (finally block)
-16. fetchCruxData()                — HTTP, NON-FATAL (only if API key set)
-17. return Step1ParsedReport
+ 3. Page.navigate(url)
+ 4. Smart Wait:
+    a. domContentEventFired()      — mandatory (DOM parsed)
+    b. race(loadEventFired, 15s)   — optimistic wait or soft timeout
+    Entire block wrapped in 30s fatal timeout
+ 5. Capture rawHtml               — Network.getResponseBody + DOM fallback
+                                     FATAL if empty
+ 6. detectBotWall()                — FATAL if wall detected
+ 7. dismissBlockingModals()        — NON-FATAL
+ 8. discoverPageTypes()            — NON-FATAL
+ 9. detectTechStack()              — pure
+10. detectThirdPartyDomains()      — pure, NON-FATAL
+11. detectLanguages()              — pure, NON-FATAL
+12. detectQueryParams()            — pure, NON-FATAL
+13. detectServiceWorkers()         — CDP, NON-FATAL
+14. detectDataLayer()              — CDP, NON-FATAL
+15. discoverFilterSelector()       — CDP, NON-FATAL (only if PLP found)
+16. connection.close()             — always (finally block)
+17. fetchCruxData()                — HTTP, NON-FATAL (only if API key set)
+18. return Step1ParsedReport
 ```

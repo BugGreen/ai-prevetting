@@ -38,14 +38,14 @@ export async function discoverFilterSelector(
 
 ```mermaid
 flowchart LR
-    NAV["Page.navigate(plpUrl)"] --> LOAD["Page.loadEventFired()"]
-    LOAD --> EVAL["Runtime.evaluate:\ntry each selector"]
+    NAV["Page.navigate(plpUrl)"] --> DOM["Page.domContentEventFired()"]
+    DOM --> EVAL["Runtime.evaluate:\ntry each selector"]
     EVAL --> FIRST["Return first match\nor null"]
     FIRST --> OUT["FilterSelectorResult"]
 ```
 
 1. Navigates to the provided PLP URL
-2. Waits for the page load event
+2. Waits for `domContentEventFired` (DOM parsed, sufficient for selector queries)
 3. Evaluates a JavaScript snippet that tries each selector in order
 4. Returns the first selector that matches a DOM element, or null
 

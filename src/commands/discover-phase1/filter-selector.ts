@@ -54,7 +54,7 @@ export async function discoverFilterSelector(
   plpUrl: string,
 ): Promise<FilterSelectorResult> {
   await client.Page.navigate({ url: plpUrl });
-  await client.Page.loadEventFired();
+  await client.Page.domContentEventFired();
 
   const selectors = JSON.stringify(FILTER_SELECTORS);
 

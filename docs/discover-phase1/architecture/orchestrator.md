@@ -1,7 +1,7 @@
 # runPhase1Discovery()
 
 **File:** `src/commands/discover-phase1/orchestrator.ts`
-**Tests:** `src/__tests__/discover-phase1/runPhase1Discovery.test.ts` (3 tests)
+**Tests:** `src/__tests__/discover-phase1/runPhase1Discovery.test.ts` (8 tests)
 **Status:** Implemented ✅
 
 ---
@@ -41,8 +41,16 @@ sequenceDiagram
     O->>CDP: createNewTarget()
     O->>CDP: Network + Page + Runtime enable
     O->>CDP: Page.navigate(url)
-    O->>CDP: Page.loadEventFired()
-    O->>CDP: Network.getResponseBody()
+    O->>CDP: domContentEventFired() [mandatory]
+    O->>CDP: race(loadEventFired(), 15s soft timeout)
+
+    alt loadEventFired wins
+        CDP-->>O: full page loaded
+    else 15s soft timeout wins
+        O->>O: warn — proceed with DOM state
+    end
+
+    O->>CDP: getResponseBody() or Runtime.evaluate fallback
     CDP-->>O: rawHtml + responseHeaders
 
     O->>BW: detectBotWall(rawHtml)
@@ -156,8 +164,9 @@ export class BotWallError extends Error {
 | 1 | `createNewTarget()` — fresh isolated tab | Yes — connection error |
 | 2 | `Network` + `Page` + `Runtime` enable | Yes |
 | 3 | `Page.navigate(url)` | Yes |
-| 4 | `Page.loadEventFired()` | Yes |
-| 5 | `Network.getResponseBody()` — capture `rawHtml` + `responseHeaders` | No — warns and continues with empty string |
+| 4a | `Page.domContentEventFired()` — mandatory baseline | Yes — 30s fatal timeout |
+| 4b | `race(loadEventFired(), 15s soft timeout)` — optimistic wait | No — warns and proceeds |
+| 5 | Capture `rawHtml` (Network.getResponseBody + DOM fallback) | Yes — fatal if empty |
 | 6 | `detectBotWall(rawHtml)` — safety gate | Yes — throws `BotWallError` |
 | 7 | `dismissBlockingModals(client, hostname)` — consent / routing modals | No |
 | 8 | `discoverPageTypes(client, url)` — crawl + classify → `pageTypes[]` | No |
@@ -170,6 +179,36 @@ export class BotWallError extends Error {
 | 15 | `discoverFilterSelector(client, plpUrl)` → filter selector | No (skipped if no PLP) |
 | 16 | `connection.close()` — destroy tab | Always — runs in `finally` |
 | 17 | `fetchCruxData(url)` → CrUX field data (mobile + desktop) | No (skipped if no API key) |
+
+---
+
+## Smart Wait Strategy
+
+Tracker-heavy e-commerce sites (like fritz-berger.de) can hang indefinitely
+waiting for third-party pixels to load. The Smart Wait avoids this while still
+capturing deferred JS injections (consent banners, language selectors):
+
+```
+Page.navigate(url)
+    │
+    ▼
+domContentEventFired()          ← mandatory baseline (DOM parsed)
+    │
+    ▼
+Promise.race([
+  loadEventFired(),             ← optimistic: full load with all assets
+  sleep(15s)                    ← soft timeout: bypass tracker bloat
+])
+    │
+    ▼                             30s fatal timeout wraps entire block
+Capture rawHtml + proceed
+```
+
+| Scenario | Behavior |
+|---|---|
+| Load event fires in < 15s | Full page captured, best quality |
+| Load event hangs (trackers) | Soft timeout at 15s, warn + proceed with DOM state |
+| DOM never parses (network down) | Fatal timeout at 30s, error thrown |
 
 ---
 

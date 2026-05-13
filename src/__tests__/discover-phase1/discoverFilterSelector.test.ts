@@ -4,7 +4,7 @@ function mockClient(evalResult: string | null) {
   return {
     Page: {
       navigate: jest.fn().mockResolvedValue({}),
-      loadEventFired: jest.fn().mockResolvedValue({}),
+      domContentEventFired: jest.fn().mockResolvedValue({}),
     },
     Runtime: {
       evaluate: jest.fn().mockResolvedValue({

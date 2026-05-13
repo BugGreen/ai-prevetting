@@ -26,11 +26,19 @@ import { fetchCruxData } from './crux';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /**
- * Maximum time (ms) allowed for the page navigate + loadEventFired sequence.
- * Sites with broken assets or slow network responses can hang indefinitely
- * without this guard.
+ * Maximum time (ms) allowed for the entire navigate + DOM ready + smart wait
+ * sequence. This is the ultimate safety net — if anything hangs beyond this,
+ * the orchestrator aborts with a fatal timeout.
  */
 const PAGE_LOAD_TIMEOUT_MS = 30_000;
+
+/**
+ * Soft timeout (ms) for the smart wait race between loadEventFired and a timer.
+ * After domContentEventFired (DOM parsed), we optimistically wait up to this
+ * long for the full load event. If trackers/pixels block it, we proceed with
+ * the current DOM state instead of hanging.
+ */
+const SOFT_LOAD_TIMEOUT_MS = 15_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -93,8 +101,12 @@ export class BotWallError extends Error {
  * Execution sequence (single Chrome tab, sequential):
  *   1. createNewTarget()              → fresh isolated tab
  *   2. Network/Page/Runtime.enable()  → subscribe to events
- *   3. Page.navigate(url)             → load homepage   ┐ race vs
- *   4. Page.loadEventFired()          → wait for load   ┘ 30s timeout
+ *   3. Page.navigate(url)             → load homepage
+ *   4. Smart Wait:
+ *        a. domContentEventFired()   → mandatory baseline (DOM parsed)
+ *        b. race(loadEventFired(),   → optimistic: wait for full load
+ *           15s soft timeout)          or proceed after 15s with DOM state
+ *        Entire block wrapped in 30s fatal timeout as safety net
  *   5. Network.getResponseBody()      → capture rawHtml + response headers
  *                                       FATAL if rawHtml is empty
  *   6. detectBotWall(rawHtml)         → ABORT with BotWallError if wall detected
@@ -149,20 +161,50 @@ async function runPhase1DiscoveryCDP(url: string): Promise<Step1ParsedReport> {
       }
     });
 
-    // ── Step 3+4: Navigate + wait for load, with timeout guard ───────────────
+    // ── Step 3+4: Navigate + Smart Wait ────────────────────────────────────────
+    // Phase 1: domContentEventFired (mandatory) — DOM is parsed, safe to query.
+    // Phase 2: race loadEventFired vs 15s soft timeout (optimistic) — catches
+    //          deferred JS injections (consent banners, language selectors) but
+    //          won't hang on tracker pixels that block the load event.
+    // The entire block is wrapped in a 30s fatal timeout as the ultimate safety net.
     await withTimeout(
       async () => {
         await client.Page.navigate({ url });
-        await client.Page.loadEventFired();
+        await client.Page.domContentEventFired();
+
+        // Optimistically wait for full load, but don't block on it
+        let softTimer: ReturnType<typeof setTimeout> | undefined;
+        const softTimeout = new Promise<'timeout'>((resolve) => {
+          softTimer = setTimeout(() => resolve('timeout'), SOFT_LOAD_TIMEOUT_MS);
+        });
+
+        const winner = await Promise.race([
+          client.Page.loadEventFired().then(() => 'loaded' as const),
+          softTimeout,
+        ]);
+
+        clearTimeout(softTimer);
+
+        if (winner === 'timeout') {
+          console.warn(
+            `Page.loadEventFired timed out after ${SOFT_LOAD_TIMEOUT_MS / 1000}s. ` +
+            `Proceeding with current DOM state to bypass tracker bloat...`,
+          );
+        }
       },
       PAGE_LOAD_TIMEOUT_MS,
-      `Page.loadEventFired for ${url}`,
+      `Smart wait for ${url}`,
     );
 
     // ── Step 5: Capture raw HTML — fatal if empty ─────────────────────────────
     // An empty rawHtml passed to detectBotWall is a false negative (bot wall
     // goes undetected). An empty rawHtml passed to detectTechStack produces a
     // vacuously empty result that looks valid. Fail fast rather than silently.
+    //
+    // Primary: Network.getResponseBody (preserves original server HTML).
+    // Fallback: Runtime.evaluate document.documentElement.outerHTML (DOM snapshot).
+    // The fallback handles the race where domContentEventFired fires before
+    // Network.responseReceived sets mainRequestId.
     let rawHtml = '';
     if (mainRequestId) {
       try {
@@ -170,6 +212,18 @@ async function runPhase1DiscoveryCDP(url: string): Promise<Step1ParsedReport> {
         rawHtml = body.base64Encoded
           ? Buffer.from(body.body, 'base64').toString('utf-8')
           : body.body;
+      } catch {
+        // fall through to DOM fallback
+      }
+    }
+
+    if (!rawHtml) {
+      try {
+        const { result } = await client.Runtime.evaluate({
+          expression: 'document.documentElement.outerHTML',
+          returnByValue: true,
+        });
+        rawHtml = result.value || '';
       } catch {
         // fall through — empty rawHtml triggers the guard below
       }

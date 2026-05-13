@@ -19,7 +19,13 @@ const mockCreateNewTarget      = createNewTarget      as jest.MockedFunction<typ
 
 const BASE_URL = 'https://example.com';
 
-function makeFakeConnection(overrides?: Partial<{ loadEventFired: () => Promise<unknown>; body: string }>) {
+interface FakeConnectionOverrides {
+  domContentEventFired?: () => Promise<unknown>;
+  loadEventFired?: () => Promise<unknown>;
+  body?: string;
+}
+
+function makeFakeConnection(overrides?: Partial<FakeConnectionOverrides>) {
   const responseBody = overrides?.body ?? '<html><head></head></html>';
   const client = {
     Network: {
@@ -33,12 +39,14 @@ function makeFakeConnection(overrides?: Partial<{ loadEventFired: () => Promise<
       getResponseBody: jest.fn().mockResolvedValue({ body: responseBody, base64Encoded: false }),
     },
     Page: {
-      enable:         jest.fn().mockResolvedValue({}),
-      navigate:       jest.fn().mockResolvedValue({}),
-      loadEventFired: jest.fn().mockImplementation(overrides?.loadEventFired ?? (() => Promise.resolve({}))),
+      enable:                jest.fn().mockResolvedValue({}),
+      navigate:              jest.fn().mockResolvedValue({}),
+      domContentEventFired:  jest.fn().mockImplementation(overrides?.domContentEventFired ?? (() => Promise.resolve({}))),
+      loadEventFired:        jest.fn().mockImplementation(overrides?.loadEventFired ?? (() => Promise.resolve({}))),
     },
     Runtime: {
-      enable: jest.fn().mockResolvedValue({}),
+      enable:   jest.fn().mockResolvedValue({}),
+      evaluate: jest.fn().mockResolvedValue({ result: { type: 'string', value: '[]' } }),
     },
   };
   return { client, close: jest.fn().mockResolvedValue(undefined) };
@@ -84,19 +92,18 @@ describe('runPhase1Discovery', () => {
     expect(fakeConnection.close).toHaveBeenCalledTimes(1);
   });
 
-  // ── Page load timeout ─────────────────────────────────────────────────────
+  // ── Smart Wait ───────────────────────────────────────────────────────────
 
-  it('throws a timeout error and closes the tab when loadEventFired hangs', async () => {
+  it('throws a fatal timeout when domContentEventFired never fires (30s safety net)', async () => {
     jest.useFakeTimers();
 
     const hangingConnection = makeFakeConnection({
-      loadEventFired: () => new Promise(() => {}), // never resolves
+      domContentEventFired: () => new Promise(() => {}), // never resolves
+      loadEventFired: () => new Promise(() => {}),
     });
     mockCreateNewTarget.mockResolvedValue(hangingConnection as any);
 
     const promise = runPhase1Discovery(BASE_URL);
-    // Attach the assertion BEFORE advancing timers so the catch handler is
-    // registered before the rejection fires — prevents UnhandledRejectionWarning.
     const assertion = expect(promise).rejects.toThrow(/timed out/i);
 
     await jest.runAllTimersAsync();
@@ -106,10 +113,37 @@ describe('runPhase1Discovery', () => {
     jest.useRealTimers();
   });
 
+  it('warns and proceeds when loadEventFired hangs but domContentEventFired succeeds (soft timeout)', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.useFakeTimers();
+
+    const softTimeoutConnection = makeFakeConnection({
+      loadEventFired: () => new Promise(() => {}), // never resolves — simulates tracker bloat
+    });
+    mockCreateNewTarget.mockResolvedValue(softTimeoutConnection as any);
+
+    const promise = runPhase1Discovery(BASE_URL);
+
+    // Advance past the 15s soft timeout but not the 30s fatal timeout
+    await jest.advanceTimersByTimeAsync(16_000);
+
+    const report = await promise;
+
+    expect(report).toBeDefined();
+    expect(report.url).toBe(BASE_URL);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('Proceeding with current DOM state'));
+    expect(softTimeoutConnection.close).toHaveBeenCalledTimes(1);
+    jest.useRealTimers();
+  });
+
   // ── Empty rawHtml ─────────────────────────────────────────────────────────
 
   it('throws a fatal error and closes the tab when rawHtml is empty', async () => {
     const emptyBodyConnection = makeFakeConnection({ body: '' });
+    // Also make the DOM fallback return empty so rawHtml stays empty
+    emptyBodyConnection.client.Runtime.evaluate.mockResolvedValue({
+      result: { type: 'string', value: '' },
+    });
     mockCreateNewTarget.mockResolvedValue(emptyBodyConnection as any);
 
     await expect(runPhase1Discovery(BASE_URL)).rejects.toThrow(/Failed to retrieve page HTML/i);
