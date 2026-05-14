@@ -23,6 +23,7 @@ import {
   parseStep1Report,
   Step1ParsedReport,
 } from '../utils/artifacts';
+import { generateReport } from '../utils/report-generator';
 import { DeviceType, listTargets } from '../cdp/connection';
 
 export interface FullCheckOptions {
@@ -440,7 +441,25 @@ export async function runFullCheck(options: FullCheckOptions): Promise<FullCheck
     const metricsPath = path.join(runDir, 'execution-metrics.json');
     fs.writeFileSync(metricsPath, JSON.stringify(executionMetrics, null, 2));
 
+    // Generate and save Markdown report
+    const fullResult: FullCheckResult = {
+      url,
+      timestamp,
+      htmlComparison: htmlResult.result ?? null,
+      ssrCheck: ssrResult.result ?? null,
+      imageCheck: imageResult.result ?? null,
+      headerCheck: headerResult.result ?? null,
+      navigationCheck: navResult?.result || null,
+      wptResult,
+      step1Report,
+      executionMetrics,
+    };
+    const reportMd = generateReport(fullResult);
+    const reportPath = path.join(runDir, 'report.md');
+    fs.writeFileSync(reportPath, reportMd);
+
     savedTo = runDir;
+    console.log(`Report saved to: ${reportPath}`);
     console.log(`Execution metrics saved to: ${metricsPath}`);
   }
 
@@ -619,6 +638,7 @@ export async function handleFullCheckCommand(urlArg: string | undefined, options
     if (result.savedTo) {
       console.log('');
       console.log('Saved files:');
+      console.log(`  Report:       ${result.savedTo}/report.md`);
       console.log(`  Metrics JSON: ${result.savedTo}/execution-metrics.json`);
     }
   } catch (error) {
