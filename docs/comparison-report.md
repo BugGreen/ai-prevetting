@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-14
 **Subject:** fritz-berger.de
-**Branch:** `feature/cdp-refactor`
+**Branch:** `master`
 
 ---
 
@@ -64,9 +64,9 @@ the CLI has no orchestrator. Claude Code itself is the integration layer: it
 reads both the Cowork Step 1 report and the CLI's CDP output in its context
 window, then writes the consolidated narrative following the prompt template.
 
-**Note:** On the `feature/cdp-refactor` branch, the `--report` flag was renamed
-to `--import-phase1` (`-i`). Without this flag, the autonomous
-`runPhase1Discovery()` runs instead. This is the key architectural change.
+**Note:** The `--report` flag was renamed to `--import-phase1` (`-i`).
+Without this flag, the autonomous `runPhase1Discovery()` runs instead.
+This is the key architectural change.
 
 **How the autonomous workflow works:** `runPhase1Discovery()` performs 17
 sequential CDP-based detection steps in a single Chrome tab, producing

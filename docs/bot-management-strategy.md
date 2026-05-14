@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-14
 **Subject:** Options analysis for handling WAF/bot-manager blocking when the CLI runs as an unattended service
-**Branch:** `feature/cdp-refactor`
+**Branch:** `master`
 **Status:** Proposal (no code changes)
 
 ---

@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-14
 **Subject:** Containerization proposal for the Speed Kit Pre-Vetting tool
-**Branch:** `feature/cdp-refactor`
+**Branch:** `master`
 **Status:** Proposal (no code changes)
 
 ---
