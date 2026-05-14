@@ -1,5 +1,6 @@
 import { createNewTarget, DEVICE_PROFILES, DeviceType } from '../cdp/connection';
 import { createRunDir, saveJson, extractDomain } from '../utils/artifacts';
+import { dismissBlockingModals } from './discover-phase1';
 
 export interface NavigationCheckOptions {
   startUrl: string;
@@ -176,6 +177,9 @@ export async function checkNavigation(options: NavigationCheckOptions): Promise<
     await client.Page.navigate({ url: startUrl });
     await client.Page.loadEventFired();
     await waitForHydration(client);
+
+    // Dismiss any blocking modals (routing, consent) so links are clickable
+    await dismissBlockingModals(client, new URL(startUrl).hostname);
 
     // Clear any previous requests
     requests.length = 0;

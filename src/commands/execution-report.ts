@@ -124,7 +124,7 @@ export function generateExecutionReport(
   lines.push('| Check | Duration | Status |');
   lines.push('|-------|----------|--------|');
 
-  const checkOrder = ['htmlComparison', 'ssrCheck', 'imageCheck', 'headerCheck', 'navigationCheck', 'wpt'] as const;
+  const checkOrder = ['phase1Discovery', 'htmlComparison', 'ssrCheck', 'imageCheck', 'headerCheck', 'navigationCheck', 'wpt'] as const;
   for (const key of checkOrder) {
     const timing = metrics.checks[key as keyof typeof metrics.checks];
     if (timing) {

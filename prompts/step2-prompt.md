@@ -18,7 +18,7 @@ Step 2 uses the **prevetting-checker CLI toolkit** which connects to Chrome via 
 
 ## Your Task
 
-1. Run `npx ts-node src/cli.ts full-check {{URL}} -s --skip-wpt` to perform all CDP-based checks
+1. Run `npx ts-node src/cli.ts full-check --import-phase1 output/fritz-berger-prevetting-step1.md -s --skip-wpt` to perform all CDP-based checks using the Step 1 report as input
 2. Combine the Step 1 findings with the new CDP-verified results
 3. Generate a final comprehensive report
 

@@ -1,0 +1,67 @@
+{
+  "startTime": "2026-05-14T06:27:30.665Z",
+  "endTime": "2026-05-14T06:29:54.756Z",
+  "totalDurationMs": 144091,
+  "checks": {
+    "phase1Discovery": {
+      "name": "Phase 1 Discovery",
+      "startMs": 0,
+      "endMs": 89368,
+      "durationMs": 89368,
+      "status": "success"
+    },
+    "htmlComparison": {
+      "name": "HTML Comparison",
+      "startMs": 6,
+      "endMs": 31251,
+      "durationMs": 31245,
+      "status": "failed",
+      "error": "Page load timeout"
+    },
+    "ssrCheck": {
+      "name": "SSR Check",
+      "startMs": 6,
+      "endMs": 91551,
+      "durationMs": 91545,
+      "status": "success"
+    },
+    "imageCheck": {
+      "name": "Image Check",
+      "startMs": 6,
+      "endMs": 106506,
+      "durationMs": 106500,
+      "status": "success"
+    },
+    "headerCheck": {
+      "name": "Headers Check",
+      "startMs": 6,
+      "endMs": 67204,
+      "durationMs": 67198,
+      "status": "success"
+    },
+    "navigationCheck": {
+      "name": "Navigation Check",
+      "startMs": 7,
+      "endMs": 144090,
+      "durationMs": 144083,
+      "status": "success"
+    },
+    "wpt": {
+      "name": "WebPageTest",
+      "startMs": 144091,
+      "endMs": 144091,
+      "durationMs": 0,
+      "status": "skipped"
+    }
+  },
+  "errors": [
+    {
+      "check": "htmlComparison",
+      "message": "Page load timeout",
+      "timestamp": "2026-05-14T06:28:01.917Z"
+    }
+  ],
+  "warnings": [
+    "Failed checks: HTML Comparison"
+  ]
+}

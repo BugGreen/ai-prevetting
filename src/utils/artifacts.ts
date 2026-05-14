@@ -161,6 +161,12 @@ export interface Step1ParsedReport {
   techStack: Record<string, string>;
   cruxData?: { mobile: Record<string, string>; desktop: Record<string, string> };
   rawContent: string;
+  thirdPartyDomains?: import('../commands/discover-phase1/third-party').ThirdPartyResult;
+  languages?: import('../commands/discover-phase1/languages').LanguageResult;
+  queryParams?: import('../commands/discover-phase1/query-params').QueryParamResult;
+  serviceWorkers?: import('../commands/discover-phase1/service-workers').ServiceWorkerResult;
+  dataLayer?: import('../commands/discover-phase1/data-layer').DataLayerResult;
+  filterSelector?: string | null;
 }
 
 /**
